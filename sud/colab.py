@@ -125,7 +125,7 @@ def tunnel(vps_host, vps_user="root", vps_bind="172.18.0.1:8080", port=7865, ssh
     extra_forward = ""
     if ssh_access:
         _start_sshd()
-        extra_forward = f"-R {SSH_BIND}:localhost:22 "
+        extra_forward = f"-R {SSH_BIND}:127.0.0.1:22 "
 
     raw = _secret("VPS_SSH_KEY")
     if not raw:
@@ -142,7 +142,7 @@ def tunnel(vps_host, vps_user="root", vps_bind="172.18.0.1:8080", port=7865, ssh
 while true; do
   echo "$(date '+%F %T') подключаюсь к {vps_host}"
   ssh -N {_ssh_opts()} -o ExitOnForwardFailure=yes \\
-      -R {vps_bind}:localhost:{port} {extra_forward}{vps_user}@{vps_host}
+      -R {vps_bind}:127.0.0.1:{port} {extra_forward}{vps_user}@{vps_host}
   rc=$?
   echo "$(date '+%F %T') туннель упал (код $rc), повтор через 5 с"
   sleep 5
