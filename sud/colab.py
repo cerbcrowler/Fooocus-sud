@@ -124,8 +124,9 @@ done
     with open(TUNNEL_SCRIPT, "w") as f:
         f.write(loop)
 
-    sh(f"pkill -f {TUNNEL_SCRIPT}")
-    sh(f"pkill -f 'ssh -N.*{vps_bind}'")
+    # '[.]' / '[-]' — чтобы pkill не убил собственную оболочку
+    sh(f"pkill -f '{TUNNEL_SCRIPT.replace('.sh', '[.]sh')}'")
+    sh(f"pkill -f 'ssh [-]N.*{vps_bind}'")
     subprocess.Popen(f"nohup bash {TUNNEL_SCRIPT} > {TUNNEL_LOG} 2>&1 &", shell=True)
     time.sleep(6)
 
@@ -175,9 +176,23 @@ def _ensure_tools():
         sh("apt-get -qq update > /dev/null && apt-get -qq install -y zstd > /dev/null", check=True)
 
 
+def venv_env():
+    """Окружение для процессов из venv: без хвостов Jupyter/Colab (Python 3.13)."""
+    env = dict(os.environ,
+               PYTORCH_CUDA_ALLOC_CONF="garbage_collection_threshold:0.9,max_split_size_mb:512",
+               VIRTUAL_ENV=VENV, PATH=f"{VENV}/bin:" + os.environ.get("PATH", ""))
+    env.pop("PYTHONPATH", None)  # чтобы venv не подхватил пакеты Colab
+    env["MPLBACKEND"] = "Agg"     # у Colab тут бэкенд Jupyter, matplotlib в venv его не знает
+    env["PYTHONUNBUFFERED"] = "1"  # иначе лог Fooocus копится в буфере и в ячейке его не видно
+    return env
+
+
 def _venv_healthy(py):
-    return subprocess.run(f"{py} -c 'import torch, gradio'", shell=True,
-                          capture_output=True).returncode == 0
+    r = subprocess.run(f"{py} -c 'import torch, gradio'", shell=True,
+                       capture_output=True, text=True, env=venv_env())
+    if r.returncode != 0 and os.path.exists(py):
+        print("⚠️ venv не прошёл проверку:", (r.stderr.strip().splitlines() or ["?"])[-1])
+    return r.returncode == 0
 
 
 def _build_venv(py):
@@ -207,7 +222,9 @@ def _restore_venv(archive):
 
 def _save_venv_bg(archive):
     """Упаковать venv на Drive в фоне: Fooocus в это время уже работает."""
-    if subprocess.run(f"pgrep -f {VENV_SAVE_SCRIPT}", shell=True, capture_output=True).returncode == 0:
+    # '[.]' — чтобы pgrep не находил собственную оболочку, в строке которой есть этот же текст
+    pattern = VENV_SAVE_SCRIPT.replace(".sh", "[.]sh")
+    if subprocess.run(f"pgrep -f '{pattern}'", shell=True, capture_output=True).returncode == 0:
         print(f"💾 venv уже сохраняется на Drive в фоне (лог: {VENV_CACHE_LOG})")
         return
     cache_dir = os.path.dirname(archive)
@@ -261,12 +278,7 @@ def ensure_venv(cache_dir=VENV_CACHE_DIR):
 
 def launch(port=7865, extra_args=""):
     py = ensure_venv()
-    env = dict(os.environ,
-               PYTORCH_CUDA_ALLOC_CONF="garbage_collection_threshold:0.9,max_split_size_mb:512",
-               VIRTUAL_ENV=VENV, PATH=f"{VENV}/bin:" + os.environ.get("PATH", ""))
-    env.pop("PYTHONPATH", None)  # чтобы venv не подхватил пакеты Colab (Python 3.13)
-    env["MPLBACKEND"] = "Agg"     # у Colab тут бэкенд Jupyter, matplotlib в venv его не знает
-    env["PYTHONUNBUFFERED"] = "1"  # иначе лог Fooocus копится в буфере и в ячейке его не видно
+    env = venv_env()
 
     # закрепить зависимости gradio 3.x (без этого новый starlette ломает страницу);
     # PIP_CONSTRAINT — чтобы и launch.py при своей установке не притащил свежие версии
