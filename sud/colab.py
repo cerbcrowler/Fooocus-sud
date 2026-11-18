@@ -165,6 +165,7 @@ def launch(port=7865, extra_args=""):
                VIRTUAL_ENV=VENV, PATH=f"{VENV}/bin:" + os.environ.get("PATH", ""))
     env.pop("PYTHONPATH", None)  # чтобы venv не подхватил пакеты Colab (Python 3.13)
     env["MPLBACKEND"] = "Agg"     # у Colab тут бэкенд Jupyter, matplotlib в venv его не знает
+    env["PYTHONUNBUFFERED"] = "1"  # иначе лог Fooocus копится в буфере и в ячейке его не видно
 
     # закрепить зависимости gradio 3.x (без этого новый starlette ломает страницу);
     # PIP_CONSTRAINT — чтобы и launch.py при своей установке не притащил свежие версии
