@@ -1,0 +1,154 @@
+"""Логика Colab-ноутбука Fooocus-sud.
+
+Ноутбук только вызывает эти функции, поэтому после `git pull` в ячейке 1
+подхватывается свежий код, и переоткрывать ноутбук не нужно.
+"""
+
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+
+FOOOCUS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+KEY = "/root/.ssh/id_vps"
+TUNNEL_SCRIPT = "/content/tunnel_loop.sh"
+TUNNEL_LOG = "/content/tunnel.log"
+
+
+def sh(cmd, check=False):
+    """Выполнить команду, показать вывод, вернуть CompletedProcess."""
+    r = subprocess.run(cmd, shell=True, text=True, capture_output=True)
+    out = (r.stdout + r.stderr).strip()
+    if out:
+        print(out, flush=True)
+    if check and r.returncode != 0:
+        raise RuntimeError(f"Команда упала ({r.returncode}): {cmd}")
+    return r
+
+
+def _secret(name):
+    """Секрет Colab или None, если его нет / нет доступа."""
+    try:
+        from google.colab import userdata
+        return userdata.get(name)
+    except Exception:
+        return None
+
+
+# ---------- ячейка 2: Drive + модели ----------
+
+def models(drive_base):
+    from google.colab import drive
+    import importlib
+    import sud.models
+
+    if not os.path.ismount("/content/drive"):
+        drive.mount("/content/drive")
+    print("✅ Drive смонтирован")
+
+    hf_token = _secret("HF_TOKEN")
+    print(f"✅ HF-токен: {hf_token[:7]}..." if hf_token
+          else "⚠️ HF-токена нет: приватные модели не скачаются")
+
+    importlib.reload(sud.models)
+    print()
+    return sud.models.sync(FOOOCUS_DIR, drive_base, hf_token=hf_token)
+
+
+# ---------- ячейка 3: пароль + туннель ----------
+
+def normalize_key(raw):
+    """Чинит ключ после Colab Secrets: убирает \\r, восстанавливает переносы строк."""
+    raw = raw.replace("\r", "").strip()
+    m = re.search(r"-----BEGIN ([A-Z ]+)-----(.*?)-----END \1-----", raw, re.S)
+    if not m:
+        raise ValueError("в VPS_SSH_KEY нет строк -----BEGIN/END----- (скопирован не весь файл?)")
+    kind, body = m.group(1), re.sub(r"\s+", "", m.group(2))
+    lines = "\n".join(body[i:i + 70] for i in range(0, len(body), 70))
+    return f"-----BEGIN {kind}-----\n{lines}\n-----END {kind}-----\n"
+
+
+def _write_auth():
+    """Второй пароль в самом Fooocus (необязательно: Traefik и так спрашивает свой)."""
+    path = os.path.join(FOOOCUS_DIR, "auth.json")
+    user, password = _secret("FOOOCUS_USER"), _secret("FOOOCUS_PASS")
+    if user and password:
+        with open(path, "w") as f:
+            json.dump([{"user": user, "pass": password}], f)
+        print(f"✅ auth.json: пользователь {user} (вход будет двойной: Traefik + Fooocus)")
+    else:
+        if os.path.exists(path):
+            os.remove(path)
+        print("ℹ️ Секретов FOOOCUS_USER/FOOOCUS_PASS нет: вход только по паролю Traefik")
+
+
+def _ssh_opts():
+    return (f"-i {KEY} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new "
+            f"-o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ConnectTimeout=10")
+
+
+def tunnel_status(vps_host, vps_user="root"):
+    """Ключ на VPS вместо шелла запускает /root/colab-status.sh: порт туннеля + Traefik."""
+    out = sh(f"ssh -T {_ssh_opts()} {vps_user}@{vps_host}").stdout
+    return "OK:" in out
+
+
+def tunnel(vps_host, vps_user="root", vps_bind="172.18.0.1:8080", port=7865):
+    _write_auth()
+
+    raw = _secret("VPS_SSH_KEY")
+    if not raw:
+        raise RuntimeError("❌ Нет секрета VPS_SSH_KEY (или не включён доступ из блокнота)")
+    os.makedirs("/root/.ssh", exist_ok=True)
+    with open(KEY, "w") as f:
+        f.write(normalize_key(raw))
+    os.chmod(KEY, 0o600)
+    if sh(f"ssh-keygen -l -f {KEY}").returncode != 0:
+        raise RuntimeError("❌ Ключ не читается: перескопируй ~/.ssh/colab_vps в секрет VPS_SSH_KEY")
+    print("✅ Ключ для VPS записан")
+
+    loop = f"""#!/bin/bash
+while true; do
+  echo "$(date '+%F %T') подключаюсь к {vps_host}"
+  ssh -N {_ssh_opts()} -o ExitOnForwardFailure=yes \\
+      -R {vps_bind}:localhost:{port} {vps_user}@{vps_host}
+  rc=$?
+  echo "$(date '+%F %T') туннель упал (код $rc), повтор через 5 с"
+  sleep 5
+done
+"""
+    with open(TUNNEL_SCRIPT, "w") as f:
+        f.write(loop)
+
+    sh(f"pkill -f {TUNNEL_SCRIPT}")
+    sh(f"pkill -f 'ssh -N.*{vps_bind}'")
+    subprocess.Popen(f"nohup bash {TUNNEL_SCRIPT} > {TUNNEL_LOG} 2>&1 &", shell=True)
+    time.sleep(6)
+
+    print("\n=== ПРОВЕРКИ (статус с VPS) ===")
+    ok = tunnel_status(vps_host, vps_user)
+    print("✅ Туннель поднят" if ok else "❌ Туннель НЕ поднят, смотри лог ниже")
+    print("\n--- tunnel.log ---")
+    sh(f"tail -n 5 {TUNNEL_LOG}")
+    return ok
+
+
+# ---------- ячейка 4: запуск ----------
+
+def launch(port=7865, extra_args=""):
+    env = dict(os.environ,
+               PYTORCH_CUDA_ALLOC_CONF="garbage_collection_threshold:0.9,max_split_size_mb:512")
+    cmd = (f"{sys.executable} launch.py --port {port} --listen --always-high-vram "
+           f"--preset sud --disable-analytics {extra_args}")
+    print(f"▶️ {cmd}\n", flush=True)
+    p = subprocess.Popen(cmd, shell=True, cwd=FOOOCUS_DIR, env=env,
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    try:
+        for line in p.stdout:
+            print(line, end="", flush=True)
+    except KeyboardInterrupt:
+        print("\n⏹ Останавливаю Fooocus...")
+        p.terminate()
+    return p.wait()
