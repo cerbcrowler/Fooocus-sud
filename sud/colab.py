@@ -164,6 +164,7 @@ def launch(port=7865, extra_args=""):
                PYTORCH_CUDA_ALLOC_CONF="garbage_collection_threshold:0.9,max_split_size_mb:512",
                VIRTUAL_ENV=VENV, PATH=f"{VENV}/bin:" + os.environ.get("PATH", ""))
     env.pop("PYTHONPATH", None)  # чтобы venv не подхватил пакеты Colab (Python 3.13)
+    env["MPLBACKEND"] = "Agg"     # у Colab тут бэкенд Jupyter, matplotlib в venv его не знает
     cmd = (f"{py} launch.py --port {port} --listen --always-high-vram "
            f"--preset sud --disable-analytics {extra_args}")
     print(f"▶️ {cmd}\n", flush=True)
