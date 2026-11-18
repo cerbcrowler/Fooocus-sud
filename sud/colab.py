@@ -4,9 +4,11 @@
 подхватывается свежий код, и переоткрывать ноутбук не нужно.
 """
 
+import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -141,20 +143,119 @@ VENV = "/content/venv-fooocus"
 VENV_PYTHON_VERSION = "3.10"  # под неё закреплены requirements_versions.txt и torch 2.1
 
 
-def ensure_venv():
+TORCH_SPEC = "torch==2.1.0 torchvision==0.16.0"  # как в launch.py
+TORCH_INDEX = "https://download.pytorch.org/whl/cu121"
+VENV_CACHE_DIR = "/content/drive/MyDrive/COLAB_MOUNTS/cache"
+VENV_CACHE_FORMAT = 1  # поднять, если поменяется способ упаковки
+VENV_CACHE_LOG = "/content/venv-cache.log"
+VENV_SAVE_SCRIPT = "/content/venv_save.sh"
+REQS = "requirements_versions.txt"
+PINS = "sud/requirements-pins.txt"
+
+
+def _venv_cache_key():
+    """Код зависимостей: поменялись версии → другой архив."""
+    h = hashlib.sha256()
+    for rel in (REQS, PINS):
+        with open(os.path.join(FOOOCUS_DIR, rel), "rb") as f:
+            h.update(f.read())
+    h.update(f"{VENV_PYTHON_VERSION}|{TORCH_SPEC}|{TORCH_INDEX}|{VENV_CACHE_FORMAT}".encode())
+    return h.hexdigest()[:12]
+
+
+def _uv_python_dir():
+    """Где uv хранит скачанный Python 3.10 (venv ссылается на него, его тоже кладём в архив)."""
+    r = subprocess.run(f"{sys.executable} -m uv python dir", shell=True, text=True, capture_output=True)
+    return r.stdout.strip()
+
+
+def _ensure_tools():
+    sh(f"{sys.executable} -m pip install -q uv", check=True)
+    if not shutil.which("zstd"):
+        sh("apt-get -qq update > /dev/null && apt-get -qq install -y zstd > /dev/null", check=True)
+
+
+def _venv_healthy(py):
+    return subprocess.run(f"{py} -c 'import torch, gradio'", shell=True,
+                          capture_output=True).returncode == 0
+
+
+def _build_venv(py):
+    print(f"⏳ Собираю venv с Python {VENV_PYTHON_VERSION} (несколько минут, только в первый раз)...",
+          flush=True)
+    sh(f"rm -rf {VENV}")
+    sh(f"{sys.executable} -m uv venv -q --seed --python {VENV_PYTHON_VERSION} {VENV}", check=True)
+    print("⏳ torch 2.1 (~2 ГБ)...", flush=True)
+    sh(f"{py} -m pip install -q --disable-pip-version-check {TORCH_SPEC} --extra-index-url {TORCH_INDEX}",
+       check=True)
+    print("⏳ зависимости Fooocus...", flush=True)
+    pins = os.path.join(FOOOCUS_DIR, PINS)
+    sh(f"cd {FOOOCUS_DIR} && {py} -m pip install -q --disable-pip-version-check "
+       f"-r {REQS} -r {PINS} -c {pins}", check=True)
+
+
+def _restore_venv(archive):
+    print(f"⏳ Распаковываю готовый venv с Drive: {os.path.basename(archive)}...", flush=True)
+    t = time.time()
+    sh(f"rm -rf {VENV}")
+    r = sh(f"set -o pipefail; zstd -dc -T0 '{archive}' | tar -x -C /")
+    if r.returncode == 0:
+        print(f"✅ venv восстановлен за {time.time() - t:.0f} с")
+        return True
+    return False
+
+
+def _save_venv_bg(archive):
+    """Упаковать venv на Drive в фоне: Fooocus в это время уже работает."""
+    if subprocess.run(f"pgrep -f {VENV_SAVE_SCRIPT}", shell=True, capture_output=True).returncode == 0:
+        print(f"💾 venv уже сохраняется на Drive в фоне (лог: {VENV_CACHE_LOG})")
+        return
+    cache_dir = os.path.dirname(archive)
+    os.makedirs(cache_dir, exist_ok=True)
+    uv_dir = _uv_python_dir().lstrip("/")
+    script = f"""#!/bin/bash
+set -o pipefail
+start=$(date +%s)
+echo "$(date '+%F %T') упаковываю venv → {archive}"
+cd / && nice -n 19 tar -cf - {VENV.lstrip('/')} {uv_dir} | nice -n 19 zstd -T0 -3 -q -f -o '{archive}.part' \\
+  && mv -f '{archive}.part' '{archive}' \\
+  && find '{cache_dir}' -maxdepth 1 -name 'venv-fooocus-*' ! -name '{os.path.basename(archive)}' -delete \\
+  && echo "$(date '+%F %T') ✅ сохранено за $(( $(date +%s) - start )) с, размер $(du -h '{archive}' | cut -f1)" \\
+  || {{ rm -f '{archive}.part'; echo "$(date '+%F %T') ❌ не удалось сохранить venv"; }}
+"""
+    with open(VENV_SAVE_SCRIPT, "w") as f:
+        f.write(script)
+    subprocess.Popen(f"nohup bash {VENV_SAVE_SCRIPT} > {VENV_CACHE_LOG} 2>&1 &", shell=True)
+    print(f"💾 venv сохраняется на Drive в фоне (лог: {VENV_CACHE_LOG}); "
+          f"не выключай среду пару минут после старта")
+
+
+def ensure_venv(cache_dir=VENV_CACHE_DIR):
     """Fooocus заморожен на зависимостях 2024 года, а в Colab Python 3.13.
 
-    Поэтому Fooocus живёт в своём venv с Python 3.10 (ставится через uv за секунды).
-    torch 2.1 + requirements_versions.txt туда ставит сам launch.py, как задумано автором.
+    Поэтому Fooocus живёт в своём venv с Python 3.10 (uv) + torch 2.1 + закреплённые версии.
+    Готовый venv лежит архивом на Drive и в новой сессии просто распаковывается.
     """
     py = f"{VENV}/bin/python"
-    if os.path.exists(py):
+    _ensure_tools()
+    archive = None
+    if os.path.ismount("/content/drive"):
+        archive = os.path.join(cache_dir, f"venv-fooocus-{_venv_cache_key()}.tar.zst")
+    else:
+        print("ℹ️ Drive не смонтирован (ячейка 2): кэш venv не используется")
+
+    if os.path.exists(py) and _venv_healthy(py):
         print(f"✅ venv уже есть: {VENV}")
-        return py
-    print(f"⏳ Создаю venv с Python {VENV_PYTHON_VERSION} (uv)...", flush=True)
-    sh(f"{sys.executable} -m pip install -q uv", check=True)
-    sh(f"{sys.executable} -m uv venv --seed --python {VENV_PYTHON_VERSION} {VENV}", check=True)
-    sh(f"{py} --version", check=True)
+    else:
+        if archive and os.path.exists(archive):
+            if _restore_venv(archive) and _venv_healthy(py):
+                return py  # из кэша: сохранять заново не нужно
+            print("⚠️ Архив на Drive битый, удаляю его и собираю venv заново")
+            os.remove(archive)
+        _build_venv(py)
+
+    if archive and not os.path.exists(archive):
+        _save_venv_bg(archive)
     return py
 
 
