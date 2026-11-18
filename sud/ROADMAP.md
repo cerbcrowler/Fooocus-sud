@@ -14,10 +14,9 @@
 - [ ] Ссылки Civitai в `links.txt` (секрет `CIVITAI_TOKEN`).
 - [ ] Ускорить загрузку с HF через `hf_transfer`.
 
-## Colab / запуск
-- [ ] Кэш venv (torch ~2 ГБ) на Drive, чтобы новая сессия стартовала быстрее.
-- [ ] (Опция) SSH в Colab через VPS, чтобы Claude сам тестировал и перезапускал бэкенд.
-
 ## Сделано
+- [x] Кэш venv на Drive (`COLAB_MOUNTS/cache/venv-fooocus-*.tar.zst`, 2,1 ГБ); восстановление в новой сессии ещё проверить.
+- [x] SSH в Colab через VPS: `ssh colab` (ProxyJump vps → 127.0.0.1:2222 → sshd Colab :2201),
+      лог `/content/fooocus.log`, перезапуск `/content/restart_fooocus.sh`.
 - [x] Форк, Colab-ноутбук (`colab/`), логика в `sud/colab.py`, модели по `links.txt` (`sud/models.py`).
 - [x] Туннель Colab → VPS → Traefik с ограниченным ключом, Python 3.10 venv, закреплённые зависимости gradio.
