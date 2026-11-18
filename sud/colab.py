@@ -97,8 +97,35 @@ def tunnel_status(vps_host, vps_user="root"):
     return "OK:" in out
 
 
-def tunnel(vps_host, vps_user="root", vps_bind="172.18.0.1:8080", port=7865):
+SSH_BIND = "127.0.0.1:2222"  # на VPS: вход в Colab по SSH (виден только изнутри VPS)
+AUTHORIZED_KEYS = os.path.join(FOOOCUS_DIR, "sud", "colab_authorized_keys")
+
+
+def _start_sshd():
+    """sshd в Colab, только на localhost и только по ключам из sud/colab_authorized_keys."""
+    if not os.path.exists("/usr/sbin/sshd"):
+        print("⏳ Ставлю openssh-server...", flush=True)
+        sh("apt-get -qq update > /dev/null; apt-get -qq install -y openssh-server > /dev/null", check=True)
+    os.makedirs("/run/sshd", exist_ok=True)
+    os.makedirs("/root/.ssh", exist_ok=True)
+    sh("ssh-keygen -A > /dev/null")
+    with open(AUTHORIZED_KEYS) as src:
+        keys = [l for l in src if l.strip() and not l.startswith("#")]
+    with open("/root/.ssh/authorized_keys", "w") as dst:
+        dst.writelines(keys)
+    os.chmod("/root/.ssh/authorized_keys", 0o600)
+    if subprocess.run("pgrep -f '[/]usr/sbin/sshd'", shell=True, capture_output=True).returncode != 0:
+        sh("/usr/sbin/sshd -o ListenAddress=127.0.0.1 -o Port=22 -o PasswordAuthentication=no "
+           "-o PermitRootLogin=prohibit-password", check=True)
+    print(f"✅ sshd в Colab запущен (ключей: {len(keys)})")
+
+
+def tunnel(vps_host, vps_user="root", vps_bind="172.18.0.1:8080", port=7865, ssh_access=True):
     _write_auth()
+    extra_forward = ""
+    if ssh_access:
+        _start_sshd()
+        extra_forward = f"-R {SSH_BIND}:localhost:22 "
 
     raw = _secret("VPS_SSH_KEY")
     if not raw:
@@ -115,7 +142,7 @@ def tunnel(vps_host, vps_user="root", vps_bind="172.18.0.1:8080", port=7865):
 while true; do
   echo "$(date '+%F %T') подключаюсь к {vps_host}"
   ssh -N {_ssh_opts()} -o ExitOnForwardFailure=yes \\
-      -R {vps_bind}:localhost:{port} {vps_user}@{vps_host}
+      -R {vps_bind}:localhost:{port} {extra_forward}{vps_user}@{vps_host}
   rc=$?
   echo "$(date '+%F %T') туннель упал (код $rc), повтор через 5 с"
   sleep 5
@@ -276,25 +303,60 @@ def ensure_venv(cache_dir=VENV_CACHE_DIR):
     return py
 
 
+RUN_SCRIPT = "/content/run_fooocus.sh"          # запуск Fooocus с нужным окружением
+RESTART_SCRIPT = "/content/restart_fooocus.sh"  # git pull + перезапуск в фоне (для работы по SSH)
+FOOOCUS_LOG = "/content/fooocus.log"
+
+
+def _write_run_scripts(py, port, extra_args):
+    import shlex
+    env = venv_env()
+    env["PIP_CONSTRAINT"] = os.path.join(FOOOCUS_DIR, PINS)
+    exports = "\n".join(f"export {k}={shlex.quote(env[k])}" for k in
+                        ("PYTORCH_CUDA_ALLOC_CONF", "VIRTUAL_ENV", "PATH", "MPLBACKEND",
+                         "PYTHONUNBUFFERED", "PIP_CONSTRAINT"))
+    run = f"""#!/bin/bash
+# Сгенерировано sud/colab.py. Запуск Fooocus из venv с Python 3.10.
+unset PYTHONPATH
+{exports}
+cd {FOOOCUS_DIR}
+{py} -m pip install -q --disable-pip-version-check -r {PINS}
+exec {py} launch.py --port {port} --listen --always-high-vram --preset sud --disable-analytics {extra_args}
+"""
+    restart = f"""#!/bin/bash
+# Подтянуть код форка и перезапустить Fooocus в фоне. Лог: {FOOOCUS_LOG}
+set -e
+branch=$(git -C {FOOOCUS_DIR} rev-parse --abbrev-ref HEAD)
+git -C {FOOOCUS_DIR} fetch -q origin "$branch"
+git -C {FOOOCUS_DIR} reset -q --hard "origin/$branch"
+git -C {FOOOCUS_DIR} log --oneline -1
+pkill -f '[l]aunch.py --port {port}' || true
+sleep 3
+nohup bash {RUN_SCRIPT} > {FOOOCUS_LOG} 2>&1 &
+echo "Fooocus перезапущен (pid $!), лог: {FOOOCUS_LOG}"
+"""
+    for path, text in ((RUN_SCRIPT, run), (RESTART_SCRIPT, restart)):
+        with open(path, "w") as f:
+            f.write(text)
+        os.chmod(path, 0o755)
+
+
 def launch(port=7865, extra_args=""):
     py = ensure_venv()
-    env = venv_env()
-
-    # закрепить зависимости gradio 3.x (без этого новый starlette ломает страницу);
-    # PIP_CONSTRAINT — чтобы и launch.py при своей установке не притащил свежие версии
-    pins = os.path.join(FOOOCUS_DIR, "sud", "requirements-pins.txt")
-    env["PIP_CONSTRAINT"] = pins
-    print("⏳ Проверяю закреплённые версии зависимостей...", flush=True)
-    sh(f"{py} -m pip install -q --disable-pip-version-check -r {pins}", check=True)
-    cmd = (f"{py} launch.py --port {port} --listen --always-high-vram "
-           f"--preset sud --disable-analytics {extra_args}")
-    print(f"▶️ {cmd}\n", flush=True)
-    p = subprocess.Popen(cmd, shell=True, cwd=FOOOCUS_DIR, env=env,
+    _write_run_scripts(py, port, extra_args)
+    print(f"▶️ {RUN_SCRIPT}  (лог дублируется в {FOOOCUS_LOG})\n", flush=True)
+    p = subprocess.Popen(f"bash {RUN_SCRIPT}", shell=True, cwd=FOOOCUS_DIR, env=venv_env(),
                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
     try:
-        for line in p.stdout:
-            print(line, end="", flush=True)
+        with open(FOOOCUS_LOG, "w") as log:
+            for line in p.stdout:
+                print(line, end="", flush=True)
+                log.write(line)
+                log.flush()
     except KeyboardInterrupt:
         print("\n⏹ Останавливаю Fooocus...")
         p.terminate()
-    return p.wait()
+    rc = p.wait()
+    if rc in (-15, 143):
+        print(f"ℹ️ Процесс остановлен (возможно, перезапущен по SSH: лог в {FOOOCUS_LOG})")
+    return rc
