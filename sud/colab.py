@@ -165,6 +165,13 @@ def launch(port=7865, extra_args=""):
                VIRTUAL_ENV=VENV, PATH=f"{VENV}/bin:" + os.environ.get("PATH", ""))
     env.pop("PYTHONPATH", None)  # чтобы venv не подхватил пакеты Colab (Python 3.13)
     env["MPLBACKEND"] = "Agg"     # у Colab тут бэкенд Jupyter, matplotlib в venv его не знает
+
+    # закрепить зависимости gradio 3.x (без этого новый starlette ломает страницу);
+    # PIP_CONSTRAINT — чтобы и launch.py при своей установке не притащил свежие версии
+    pins = os.path.join(FOOOCUS_DIR, "sud", "requirements-pins.txt")
+    env["PIP_CONSTRAINT"] = pins
+    print("⏳ Проверяю закреплённые версии зависимостей...", flush=True)
+    sh(f"{py} -m pip install -q --disable-pip-version-check -r {pins}", check=True)
     cmd = (f"{py} launch.py --port {port} --listen --always-high-vram "
            f"--preset sud --disable-analytics {extra_args}")
     print(f"▶️ {cmd}\n", flush=True)

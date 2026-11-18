@@ -1,0 +1,17 @@
+# Закрепляем зависимости gradio 3.41.2, которые Fooocus не закрепил сам.
+# Свежие версии (2025–2026) ломают gradio 3.x: например, новый starlette
+# падает с "TypeError: unhashable type: 'dict'" при открытии страницы.
+# Версии — лето 2024, когда вышел Fooocus 2.5.5.
+fastapi==0.112.2
+starlette==0.38.6
+pydantic==2.8.2
+uvicorn==0.30.6
+anyio==4.4.0
+huggingface_hub==0.24.6
+websockets==11.0.3
+aiofiles==23.2.1
+python-multipart==0.0.9
+jinja2==3.1.4
+orjson==3.10.7
+pandas==2.2.2
+matplotlib==3.9.2
