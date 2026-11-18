@@ -99,6 +99,7 @@ def tunnel_status(vps_host, vps_user="root"):
 
 SSH_BIND = "127.0.0.1:2222"  # на VPS: вход в Colab по SSH (виден только изнутри VPS)
 AUTHORIZED_KEYS = os.path.join(FOOOCUS_DIR, "sud", "colab_authorized_keys")
+SSHD_PORT = 2201  # наш sshd в Colab (порт 22 не трогаем: там может быть sshd самого Colab)
 
 
 def _start_sshd():
@@ -114,10 +115,21 @@ def _start_sshd():
     with open("/root/.ssh/authorized_keys", "w") as dst:
         dst.writelines(keys)
     os.chmod("/root/.ssh/authorized_keys", 0o600)
-    if subprocess.run("pgrep -f '[/]usr/sbin/sshd'", shell=True, capture_output=True).returncode != 0:
-        sh("/usr/sbin/sshd -o ListenAddress=127.0.0.1 -o Port=22 -o PasswordAuthentication=no "
-           "-o PermitRootLogin=prohibit-password", check=True)
-    print(f"✅ sshd в Colab запущен (ключей: {len(keys)})")
+    # У Colab есть свой sshd (для встроенного терминала), его не трогаем:
+    # наш — отдельный, на своём порту и со своим pid-файлом.
+    listen = f"127.0.0.1:{SSHD_PORT}"
+    if not _port_listening(listen):
+        sh(f"/usr/sbin/sshd -o ListenAddress=127.0.0.1 -o Port={SSHD_PORT} -o PidFile=/run/sshd-sud.pid "
+           f"-o PasswordAuthentication=no -o PermitRootLogin=prohibit-password", check=True)
+        time.sleep(1)
+    if _port_listening(listen):
+        print(f"✅ sshd в Colab слушает {listen} (ключей: {len(keys)})")
+    else:
+        print(f"❌ sshd не слушает {listen}: вход по SSH не заработает")
+
+
+def _port_listening(addr):
+    return subprocess.run(f"ss -tln | grep -q '{addr} '", shell=True).returncode == 0
 
 
 def tunnel(vps_host, vps_user="root", vps_bind="172.18.0.1:8080", port=7865, ssh_access=True):
@@ -125,7 +137,7 @@ def tunnel(vps_host, vps_user="root", vps_bind="172.18.0.1:8080", port=7865, ssh
     extra_forward = ""
     if ssh_access:
         _start_sshd()
-        extra_forward = f"-R {SSH_BIND}:127.0.0.1:22 "
+        extra_forward = f"-R {SSH_BIND}:127.0.0.1:{SSHD_PORT} "
 
     raw = _secret("VPS_SSH_KEY")
     if not raw:
