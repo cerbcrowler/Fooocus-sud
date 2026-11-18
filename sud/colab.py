@@ -137,10 +137,34 @@ done
 
 # ---------- ячейка 4: запуск ----------
 
+VENV = "/content/venv-fooocus"
+VENV_PYTHON_VERSION = "3.10"  # под неё закреплены requirements_versions.txt и torch 2.1
+
+
+def ensure_venv():
+    """Fooocus заморожен на зависимостях 2024 года, а в Colab Python 3.13.
+
+    Поэтому Fooocus живёт в своём venv с Python 3.10 (ставится через uv за секунды).
+    torch 2.1 + requirements_versions.txt туда ставит сам launch.py, как задумано автором.
+    """
+    py = f"{VENV}/bin/python"
+    if os.path.exists(py):
+        print(f"✅ venv уже есть: {VENV}")
+        return py
+    print(f"⏳ Создаю venv с Python {VENV_PYTHON_VERSION} (uv)...", flush=True)
+    sh(f"{sys.executable} -m pip install -q uv", check=True)
+    sh(f"{sys.executable} -m uv venv --seed --python {VENV_PYTHON_VERSION} {VENV}", check=True)
+    sh(f"{py} --version", check=True)
+    return py
+
+
 def launch(port=7865, extra_args=""):
+    py = ensure_venv()
     env = dict(os.environ,
-               PYTORCH_CUDA_ALLOC_CONF="garbage_collection_threshold:0.9,max_split_size_mb:512")
-    cmd = (f"{sys.executable} launch.py --port {port} --listen --always-high-vram "
+               PYTORCH_CUDA_ALLOC_CONF="garbage_collection_threshold:0.9,max_split_size_mb:512",
+               VIRTUAL_ENV=VENV, PATH=f"{VENV}/bin:" + os.environ.get("PATH", ""))
+    env.pop("PYTHONPATH", None)  # чтобы venv не подхватил пакеты Colab (Python 3.13)
+    cmd = (f"{py} launch.py --port {port} --listen --always-high-vram "
            f"--preset sud --disable-analytics {extra_args}")
     print(f"▶️ {cmd}\n", flush=True)
     p = subprocess.Popen(cmd, shell=True, cwd=FOOOCUS_DIR, env=env,
