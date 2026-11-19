@@ -44,7 +44,7 @@
         if (!box || box.querySelector('.sud-cmp-btn')) return;
         const b = document.createElement('button');
         b.type = 'button';
-        b.className = 'sud-em-btn sud-cmp-btn';
+        b.className = 'sud-cmp-btn';
         b.title = 'Композиция: свой промпт в каждом боксе';
         box.insertBefore(b, box.firstChild);
         updateButton();

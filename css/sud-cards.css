@@ -470,14 +470,14 @@ body.sud-drag-active, body.sud-drag-active * { user-select: none !important; cur
 #positive_prompt textarea, #negative_prompt textarea { padding-bottom: 30px !important; }
 
 /* ================= панель 🧬 эмбеддингов (javascript/sud-embeddings.js) ================= */
-.sud-em-btn {
+.sud-em-btn, .sud-cmp-btn {
   display: inline-flex; align-items: center; gap: 4px;
   height: 24px; padding: 0 8px; border-radius: 7px;
   border: 1px solid var(--sud-line); background: var(--background-fill-secondary);
   color: var(--body-text-color-subdued); font-size: 11.5px; cursor: pointer; opacity: 0.75;
 }
-.sud-em-btn .sud-ico { width: 14px; height: 14px; }
-.sud-em-btn:hover, .sud-em-btn.on { opacity: 1; color: var(--sud-accent); border-color: var(--sud-accent); }
+.sud-em-btn .sud-ico, .sud-cmp-btn .sud-ico { width: 14px; height: 14px; }
+.sud-em-btn:hover, .sud-em-btn.on, .sud-cmp-btn:hover, .sud-cmp-btn.on { opacity: 1; color: var(--sud-accent); border-color: var(--sud-accent); }
 
 .sud-em-panel {
   display: none; position: fixed; z-index: 1500;          /* место и высоту ставит sud-embeddings.js */
