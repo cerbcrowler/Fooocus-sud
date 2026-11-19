@@ -13,7 +13,10 @@ import subprocess
 import sys
 import time
 
+from sud.logfmt import LogFormatter, DIM, RESET
+
 FOOOCUS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PUBLIC_URL = os.environ.get("SUD_PUBLIC_URL", "https://colab.period.pp.ua")
 KEY = "/root/.ssh/id_vps"
 TUNNEL_SCRIPT = "/content/tunnel_loop.sh"
 TUNNEL_LOG = "/content/tunnel.log"
@@ -113,7 +116,7 @@ def _start_sshd():
     """sshd в Colab, только на localhost и только по ключам из sud/colab_authorized_keys."""
     if not os.path.exists("/usr/sbin/sshd"):
         print("⏳ Ставлю openssh-server...", flush=True)
-        sh("apt-get -qq update > /dev/null; apt-get -qq install -y openssh-server > /dev/null", check=True)
+        sh("apt-get -qq update > /dev/null 2>&1; apt-get -qq install -y openssh-server > /dev/null 2>&1", check=True)
     os.makedirs("/run/sshd", exist_ok=True)
     os.makedirs("/root/.ssh", exist_ok=True)
     sh("ssh-keygen -A > /dev/null")
@@ -219,7 +222,7 @@ def _uv_python_dir():
 def _ensure_tools():
     sh(f"{sys.executable} -m pip install -q uv", check=True)
     if not shutil.which("zstd"):
-        sh("apt-get -qq update > /dev/null && apt-get -qq install -y zstd > /dev/null", check=True)
+        sh("apt-get -qq update > /dev/null 2>&1; apt-get -qq install -y zstd > /dev/null 2>&1", check=True)
 
 
 def venv_env():
@@ -256,12 +259,12 @@ def _build_venv(py):
 
 
 def _restore_venv(archive):
-    print(f"⏳ Распаковываю готовый venv с Drive: {os.path.basename(archive)}...", flush=True)
+    print("⏳ venv: распаковываю кэш с Drive…", flush=True)
     t = time.time()
     sh(f"rm -rf {VENV}")
     r = sh(f"set -o pipefail; zstd -dc -T0 '{archive}' | tar -x -C /")
     if r.returncode == 0:
-        print(f"✅ venv восстановлен за {time.time() - t:.0f} с")
+        print(f"✅ venv из кэша Drive · {time.time() - t:.0f} с", flush=True)
         return True
     return False
 
@@ -308,7 +311,7 @@ def ensure_venv(cache_dir=VENV_CACHE_DIR):
         print("ℹ️ Drive не смонтирован (ячейка 2): кэш venv не используется")
 
     if os.path.exists(py) and _venv_healthy(py):
-        print(f"✅ venv уже есть: {VENV}")
+        print("✅ venv уже готов", flush=True)
     else:
         if archive and os.path.exists(archive):
             if _restore_venv(archive) and _venv_healthy(py):
@@ -368,31 +371,37 @@ echo "Fooocus перезапущен (pid $!), лог: {FOOOCUS_LOG}"
         os.chmod(path, 0o755)
 
 
+def _rule():
+    return f"{DIM}━━━━━━━━━━━━━━  Fooocus-sud  ━━━━━━━━━━━━━━{RESET}"
+
+
 def _fooocus_running(port):
     return subprocess.run(f"pgrep -f '[l]aunch.py --port {port}'", shell=True,
                           capture_output=True).returncode == 0
 
 
-def _follow(port, wait_new=90):
+def _follow(port, wait_new=90, fmt=None):
     """Fooocus перезапустили по SSH: ячейка не завершается, а показывает лог нового процесса.
 
     Пока ячейка занята, Colab не считает среду бездействующей и не отключает её.
     Выход — когда Fooocus не работает дольше wait_new секунд (или ⏹ в ячейке).
     """
     pos, idle_since = 0, time.time()
-    print(f"\n🔁 Fooocus перезапущен в фоне — ячейка остаётся подключённой, лог: {FOOOCUS_LOG}\n", flush=True)
+    fmt = fmt or LogFormatter(PUBLIC_URL)
+    print(fmt.restarted(), end="", flush=True)
     while True:
         try:
             size = os.path.getsize(FOOOCUS_LOG)
             if size < pos:            # restart_fooocus.sh начал лог заново
                 pos = 0
-                print("\n🔁 ---- новый запуск Fooocus ----\n", flush=True)
+                print(fmt.restarted(), end="", flush=True)
             if size > pos:
                 with open(FOOOCUS_LOG, encoding="utf-8", errors="replace") as f:
                     f.seek(pos)
                     chunk = f.read()
                     pos = f.tell()
-                print(chunk, end="", flush=True)
+                for text in fmt.feed(chunk):
+                    print(text, end="", flush=True)
         except FileNotFoundError:
             pass
         if _fooocus_running(port):
@@ -414,20 +423,22 @@ def launch(port=7865, extra_args=""):
         return 0
     py = ensure_venv()
     _write_run_scripts(py, port, extra_args)
-    print(f"▶️ {RUN_SCRIPT}  (лог дублируется в {FOOOCUS_LOG})\n", flush=True)
+    print(f"{_rule()}\n▶️ Запуск Fooocus  {DIM}(полный лог: {FOOOCUS_LOG}){RESET}", flush=True)
+    fmt = LogFormatter(PUBLIC_URL)
     p = subprocess.Popen(f"bash {RUN_SCRIPT}", shell=True, cwd=FOOOCUS_DIR, env=venv_env(),
                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
     try:
         with open(FOOOCUS_LOG, "w") as log:
             for line in p.stdout:
-                print(line, end="", flush=True)
+                for text in fmt.feed(line):
+                    print(text, end="", flush=True)
                 log.write(line)
                 log.flush()
         rc = p.wait()
         # процесс убит, но Fooocus поднят заново (перезапуск по SSH / из ⚙️ Настроек) — следим за ним
         time.sleep(5)
         if _fooocus_running(port) or os.path.exists(RESTART_SCRIPT):
-            _follow(port)
+            _follow(port, fmt=fmt)
         return rc
     except KeyboardInterrupt:
         print("\n⏹ Останавливаю Fooocus...", flush=True)
