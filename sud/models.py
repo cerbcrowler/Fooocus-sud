@@ -248,25 +248,6 @@ def detect_default_model(links, checkpoints_dir):
     return None
 
 
-def write_config(paths, default_model):
-    """config.txt: только то, что меняется от сессии к сессии.
-
-    Порядок в Fooocus: presets/default.json → config.txt → --preset sud → переменные окружения.
-    В presets/sud.json нет default_model, поэтому выбор отсюда не перебивается.
-    """
-    cfg = {}
-    if os.path.isfile(paths.config_txt):
-        try:
-            with open(paths.config_txt, encoding="utf-8") as f:
-                cfg = json.load(f)
-        except Exception:
-            cfg = {}
-    cfg["default_model"] = default_model
-    with open(paths.config_txt, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=4, ensure_ascii=False)
-    log(f"✅ {paths.config_txt}: default_model = {default_model}")
-
-
 # ---------- для менеджера в GUI ----------
 
 # тип в интерфейсе → (секция links.txt, папка в Paths, расширения)
@@ -279,8 +260,16 @@ STATE_FILE = "sud_state.json"  # в папке Fooocus (не в git): где Dri
 
 
 def save_state(fooocus_dir, drive_base):
-    with open(os.path.join(fooocus_dir, STATE_FILE), "w", encoding="utf-8") as f:
-        json.dump({"drive_base": drive_base}, f)
+    path = os.path.join(fooocus_dir, STATE_FILE)
+    state = {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            state = json.load(f)
+    except Exception:
+        pass
+    state["drive_base"] = drive_base
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(state, f)
 
 
 def load_paths(fooocus_dir):
@@ -427,7 +416,13 @@ def sync(fooocus_dir, drive_base, hf_token=None):
     else:
         default_model = FALLBACK_MODEL
         log(f"⚠️ Чекпоинтов нет! Будет {default_model} (если его нет — Fooocus ругнётся)")
-    write_config(p, default_model)
+
+    # авто-модель запоминаем, а config.txt собираем вместе с твоими настройками (sud/settings.py)
+    from sud import settings
+    settings.update_state(auto_model=default_model)
+    cfg = settings.apply()
+    log(f"✅ config.txt собран: модель {cfg.get('default_model')}"
+        f"{' (задана в настройках)' if cfg.get('default_model') != default_model else ''}")
     return default_model
 
 

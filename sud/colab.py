@@ -339,7 +339,8 @@ unset PYTHONPATH
 {exports}
 cd {FOOOCUS_DIR}
 {py} -m pip install -q --disable-pip-version-check -r {PINS}
-exec {py} launch.py --port {port} --listen --always-high-vram --preset sud --disable-analytics --disable-image-log {extra_args}
+{py} -m sud.settings apply  # settings.json (Drive) → config.txt
+exec {py} launch.py --port {port} --listen --always-high-vram --disable-analytics --disable-image-log {extra_args}
 """
     restart = f"""#!/bin/bash
 # Подтянуть код форка и перезапустить Fooocus в фоне. Лог: {FOOOCUS_LOG}

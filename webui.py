@@ -24,6 +24,7 @@ from modules.ui_gradio_extensions import reload_javascript
 from modules.auth import auth_enabled, check_auth
 from modules.util import is_json
 import sud.ui_models  # Fooocus-sud: вкладка «Менеджер»
+import sud.ui_settings  # Fooocus-sud: вкладка «Настройки»
 
 def get_task(*args):
     args = list(args)
@@ -688,6 +689,8 @@ with shared.gradio_root:
                     refresh_files = gr.Button(label='Refresh', value='\U0001f504 Refresh All Files', variant='secondary', elem_classes='refresh_button')
             with gr.Tab(label='\U0001F4E6 Менеджер'):  # Fooocus-sud
                 sud_manager = sud.ui_models.build()
+            with gr.Tab(label='⚙️ Настройки'):  # Fooocus-sud
+                sud_settings = sud.ui_settings.build()
             with gr.Tab(label='Advanced'):
                 guidance_scale = gr.Slider(label='Guidance Scale', minimum=1.0, maximum=30.0, step=0.01,
                                            value=modules.config.default_cfg_scale,
@@ -890,6 +893,11 @@ with shared.gradio_root:
                                     queue=False, show_progress=False)
                 sud.ui_models.wire_refresh(sud_manager, refresh_files_clicked,  # Fooocus-sud
                                            refresh_files_output + lora_ctrls)
+                sud.ui_settings.wire_capture(sud_settings, dict(  # Fooocus-sud
+                    base_model=base_model, lora_ctrls=lora_ctrls, performance=performance_selection,
+                    sampler=sampler_name, scheduler=scheduler_name, cfg=guidance_scale, sharpness=sharpness,
+                    overwrite_step=overwrite_step, styles=style_selections, aspect_ratio=aspect_ratios_selection,
+                    image_number=image_number, output_format=output_format, negative_prompt=negative_prompt))
 
         state_is_generating = gr.State(False)
 
