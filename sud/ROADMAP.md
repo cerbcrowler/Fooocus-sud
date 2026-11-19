@@ -12,6 +12,8 @@
 - [ ] Ускорить загрузку с HF через `hf_transfer`.
 
 ## Сделано
+- [x] Вкладка «⚙️ Настройки» вместо пресетов: `settings.json` на Drive → `config.txt` (`sud/settings.py`, `sud/ui_settings.py`),
+      запуск без `--preset`, «Взять из текущих», сохранение с перезапуском и автообновлением страницы.
 - [x] Картинки сразу в папку на ноуте (`javascript/sud-autosave.js`, кнопка 📁), Fooocus с `--disable-image-log`.
 - [x] Темы gruvbox light/dark (`css/sud-gruvbox.css`, `javascript/sud-theme.js`), кнопка 🌙/☀️ внизу справа.
 - [x] Вкладка «📦 Менеджер» v1: скачать по ссылке HF, links.txt, таблица с поиском (`sud/ui_models.py`).
