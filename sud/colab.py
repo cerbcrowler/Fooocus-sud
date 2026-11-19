@@ -431,6 +431,34 @@ def _follow(port, wait_new=90, fmt=None):
         time.sleep(1)
 
 
+SECRETS = ("VPS_SSH_KEY", "HF_TOKEN", "DEEPL_API_KEY", "FOOOCUS_USER", "FOOOCUS_PASS")
+
+
+def ask_early():
+    """Всё, что может спросить пользователя (доступ к Drive и секретам), — в самом начале,
+    чтобы потом запуск шёл без вопросов и можно было отойти."""
+    if not os.path.ismount("/content/drive"):
+        from google.colab import drive
+        drive.mount("/content/drive")
+    for name in SECRETS:
+        _secret(name)
+    print("✅ Drive и секреты: доступ есть, дальше без вопросов", flush=True)
+
+
+def run_all(vps_host, vps_user="root", vps_bind="172.18.0.1:8080", port=7865, public_url=None):
+    """Одна кнопка: Drive + модели → туннель → Fooocus (ячейка потом следит за логом)."""
+    global PUBLIC_URL
+    if public_url:
+        PUBLIC_URL = public_url
+    ask_early()
+    print(f"\n{_rule()}\n📦 Модели", flush=True)
+    models()
+    print(f"\n{_rule()}\n🔐 Туннель на VPS", flush=True)
+    tunnel(vps_host, vps_user, vps_bind, port)
+    print(f"\n{_rule()}\n🌐 Интерфейс: {PUBLIC_URL}  (откроется, когда ниже появится 'App started')", flush=True)
+    return launch(port)
+
+
 def launch(port=7865, extra_args=""):
     if _fooocus_running(port):
         # Fooocus уже работает (например, перезапущен по SSH) — второй не поднимаем, просто подключаемся

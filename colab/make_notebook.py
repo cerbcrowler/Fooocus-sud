@@ -15,65 +15,50 @@ md_intro = """# Fooocus-sud в Colab
 | `VPS_SSH_KEY` | приватный ключ туннеля: весь текст файла `~/.ssh/colab_vps` с ноута |
 | `FOOOCUS_USER` / `FOOOCUS_PASS` | *(необязательно)* второй пароль уже в самом Fooocus; Traefik и так спрашивает свой |
 
-Запускай ячейки по порядку 1 → 4. Картинки сохраняются только в `/content` и пропадают вместе с сессией.
+Жми ▶ у ячейки «🚀 Запуск» — и можно отходить: доступ к Drive спрашивается в самом начале.
+Остановить — ⏹ у ячейки (Fooocus остановится). Картинки сохраняются только в `/content` и пропадают вместе с сессией.
 """
 
-cell1 = r'''# @title 1️⃣ Настройки + GPU + клон форка
+cell1 = r'''# @title 🚀 Запуск Fooocus-sud
 BRANCH     = "main"  # @param {type:"string"}
 VPS_HOST   = "128.140.12.50"  # @param {type:"string"}
 VPS_USER   = "root"  # @param {type:"string"}
 VPS_BIND   = "172.18.0.1:8080"  # @param {type:"string"}
 PUBLIC_URL = "https://colab.period.pp.ua"  # @param {type:"string"}
 
-import os, subprocess
+import os, subprocess, sys, importlib
 
-REPO        = "https://github.com/cerbcrowler/Fooocus-sud.git"
-FOOOCUS_DIR = "/content/Fooocus"
-PORT        = 7865
+# 1. Google Drive — первым делом: окно доступа всплывает сразу, дальше всё идёт без вопросов
+from google.colab import drive
+if not os.path.ismount("/content/drive"):
+    drive.mount("/content/drive")
 
-def sh(cmd, check=True):
-    """Выполнить команду и показать вывод."""
+REPO, FOOOCUS_DIR, PORT = "https://github.com/cerbcrowler/Fooocus-sud.git", "/content/Fooocus", 7865
+
+def sh(cmd):
     r = subprocess.run(cmd, shell=True, text=True, capture_output=True)
-    out = (r.stdout + r.stderr).strip()
-    if out:
-        print(out)
-    if check and r.returncode != 0:
+    if (r.stdout + r.stderr).strip():
+        print((r.stdout + r.stderr).strip())
+    if r.returncode:
         raise RuntimeError(f"Команда упала ({r.returncode}): {cmd}")
-    return r
 
-print("=== GPU ===")
-if sh("nvidia-smi --query-gpu=name,memory.total --format=csv,noheader", check=False).returncode != 0:
+# 2. GPU
+if subprocess.run("nvidia-smi --query-gpu=name,memory.total --format=csv,noheader", shell=True).returncode:
     print("❌ GPU нет! Среда выполнения → Сменить тип → GPU")
 
-print(f"\n=== ФОРК: {REPO} ({BRANCH}) ===")
+# 3. свежий код форка (вся логика — в sud/colab.py, ячейка не устаревает)
 if os.path.isdir(f"{FOOOCUS_DIR}/.git"):
-    sh(f"git -C {FOOOCUS_DIR} fetch origin {BRANCH}")
-    sh(f"git -C {FOOOCUS_DIR} checkout -B {BRANCH} origin/{BRANCH}")
-    sh(f"git -C {FOOOCUS_DIR} reset --hard origin/{BRANCH}")
+    sh(f"git -C {FOOOCUS_DIR} fetch -q origin {BRANCH} && git -C {FOOOCUS_DIR} checkout -q -B {BRANCH} origin/{BRANCH} && git -C {FOOOCUS_DIR} reset -q --hard origin/{BRANCH}")
 else:
-    sh(f"git clone -b {BRANCH} {REPO} {FOOOCUS_DIR}")
+    sh(f"git clone -q -b {BRANCH} {REPO} {FOOOCUS_DIR}")
 sh(f"git -C {FOOOCUS_DIR} log --oneline -1")
-
-# вся логика ячеек 2–4 живёт в форке (sud/colab.py) и обновляется вместе с git pull
-import sys, importlib
 if FOOOCUS_DIR not in sys.path:
     sys.path.insert(0, FOOOCUS_DIR)
 import sud.colab as sc
 importlib.reload(sc)
-print("✅ Код на месте")
-'''
 
-cell2 = r'''# @title 2️⃣ Google Drive + модели (links.txt)
-sc.models()   # модели, лоры, эмбеддинги: MyDrive/FOOOCUS-SUD (см. README.txt там)
-'''
-
-cell3 = r'''# @title 3️⃣ Пароль + туннель на VPS
-sc.tunnel(VPS_HOST, VPS_USER, VPS_BIND, PORT)
-'''
-
-cell4 = r'''# @title 4️⃣ Запуск Fooocus
-print(f"🌐 Интерфейс: {PUBLIC_URL}  (появится, когда ниже напишет 'App started')")
-sc.launch(PORT)
+# 4. модели → туннель → Fooocus (ячейка дальше крутится и показывает лог)
+sc.run_all(VPS_HOST, VPS_USER, VPS_BIND, PORT, public_url=PUBLIC_URL)
 '''
 
 
@@ -85,7 +70,7 @@ def code(src):
 nb = {
     "cells": [
         {"cell_type": "markdown", "metadata": {}, "source": md_intro.splitlines(keepends=True)},
-        code(cell1), code(cell2), code(cell3), code(cell4),
+        code(cell1),
     ],
     "metadata": {
         "accelerator": "GPU",
