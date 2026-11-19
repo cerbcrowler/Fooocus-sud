@@ -57,6 +57,14 @@ def _google_one(text):
 
 
 def _google(texts):
+    """Все куски одним запросом (через перевод строки); если строки не сошлись — по одному."""
+    if len(texts) > 1:
+        try:
+            joined = _google_one("\n".join(texts)).split("\n")
+            if len(joined) == len(texts):
+                return joined
+        except Exception:
+            pass
     return [_google_one(t) for t in texts]
 
 
