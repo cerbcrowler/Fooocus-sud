@@ -121,6 +121,10 @@ def build():
                                                      value=cfg.get("default_advanced_checkbox", True))
         f["sud_hide_styles_tab"] = gr.Checkbox(label="Скрыть вкладку Styles (стили по умолчанию продолжат работать)",
                                                value=bool(cfg.get("sud_hide_styles_tab", False)))
+        with gr.Row():
+            f["sud_notify_sound"] = gr.Checkbox(label="🔔 Звук, когда вся очередь генерации закончилась",
+                                                value=bool(cfg.get("sud_notify_sound", True)))
+            gr.HTML('<button type="button" class="sud-notify-test sud-sp-btn">▶ Прослушать</button>')
 
     with gr.Accordion("Перевод промпта RU → EN", open=False):
         f["sud_translate_engine"] = gr.Radio(list(TR_ENGINES), label="Чем переводить",
@@ -240,6 +244,7 @@ def _prefetch_status_md():
 def _validate_and_convert(d):
     d["sud_translate_engine"] = TR_ENGINES.get(d.get("sud_translate_engine"), "deepl")
     d["sud_auto_translate"] = bool(d.get("sud_auto_translate"))
+    d["sud_notify_sound"] = bool(d.get("sud_notify_sound"))
     d[P.SETTINGS_KEY] = _labels_to_groups(d.get(P.SETTINGS_KEY))
     d["default_max_lora_number"] = int(d["default_max_lora_number"])
     d["default_max_image_number"] = int(d["default_max_image_number"])

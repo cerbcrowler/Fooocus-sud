@@ -48,7 +48,9 @@ def flags_html():
     cfg = settings.effective()
     hide_styles = "1" if cfg.get("sud_hide_styles_tab") else "0"
     auto_tr = "1" if cfg.get("sud_auto_translate") else "0"
-    return f'<div id="sud-flags" data-hide-styles="{hide_styles}" data-auto-translate="{auto_tr}"></div>'
+    notify = "1" if cfg.get("sud_notify_sound", True) else "0"
+    return (f'<div id="sud-flags" data-hide-styles="{hide_styles}" data-auto-translate="{auto_tr}" '
+            f'data-notify="{notify}"></div>')
 
 
 def add_button(text):
