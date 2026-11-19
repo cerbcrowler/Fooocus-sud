@@ -368,7 +368,50 @@ echo "Fooocus перезапущен (pid $!), лог: {FOOOCUS_LOG}"
         os.chmod(path, 0o755)
 
 
+def _fooocus_running(port):
+    return subprocess.run(f"pgrep -f '[l]aunch.py --port {port}'", shell=True,
+                          capture_output=True).returncode == 0
+
+
+def _follow(port, wait_new=90):
+    """Fooocus перезапустили по SSH: ячейка не завершается, а показывает лог нового процесса.
+
+    Пока ячейка занята, Colab не считает среду бездействующей и не отключает её.
+    Выход — когда Fooocus не работает дольше wait_new секунд (или ⏹ в ячейке).
+    """
+    pos, idle_since = 0, time.time()
+    print(f"\n🔁 Fooocus перезапущен в фоне — ячейка остаётся подключённой, лог: {FOOOCUS_LOG}\n", flush=True)
+    while True:
+        try:
+            size = os.path.getsize(FOOOCUS_LOG)
+            if size < pos:            # restart_fooocus.sh начал лог заново
+                pos = 0
+                print("\n🔁 ---- новый запуск Fooocus ----\n", flush=True)
+            if size > pos:
+                with open(FOOOCUS_LOG, encoding="utf-8", errors="replace") as f:
+                    f.seek(pos)
+                    chunk = f.read()
+                    pos = f.tell()
+                print(chunk, end="", flush=True)
+        except FileNotFoundError:
+            pass
+        if _fooocus_running(port):
+            idle_since = time.time()
+        elif time.time() - idle_since > wait_new:
+            print(f"\n⏹ Fooocus не работает уже {wait_new} с — ячейка завершается.", flush=True)
+            return
+        time.sleep(1)
+
+
 def launch(port=7865, extra_args=""):
+    if _fooocus_running(port):
+        # Fooocus уже работает (например, перезапущен по SSH) — второй не поднимаем, просто подключаемся
+        print("ℹ️ Fooocus уже запущен — подключаюсь к его логу, второй экземпляр не стартую.", flush=True)
+        try:
+            _follow(port)
+        except KeyboardInterrupt:
+            print("\n⏹ Ячейка остановлена (Fooocus продолжает работать в фоне).", flush=True)
+        return 0
     py = ensure_venv()
     _write_run_scripts(py, port, extra_args)
     print(f"▶️ {RUN_SCRIPT}  (лог дублируется в {FOOOCUS_LOG})\n", flush=True)
@@ -380,10 +423,14 @@ def launch(port=7865, extra_args=""):
                 print(line, end="", flush=True)
                 log.write(line)
                 log.flush()
+        rc = p.wait()
+        # процесс убит, но Fooocus поднят заново (перезапуск по SSH / из ⚙️ Настроек) — следим за ним
+        time.sleep(5)
+        if _fooocus_running(port) or os.path.exists(RESTART_SCRIPT):
+            _follow(port)
+        return rc
     except KeyboardInterrupt:
-        print("\n⏹ Останавливаю Fooocus...")
+        print("\n⏹ Останавливаю Fooocus...", flush=True)
         p.terminate()
-    rc = p.wait()
-    if rc in (-15, 143):
-        print(f"ℹ️ Процесс остановлен (возможно, перезапущен по SSH: лог в {FOOOCUS_LOG})")
-    return rc
+        sh(f"pkill -f '[l]aunch.py --port {port}'")
+        return p.wait()
