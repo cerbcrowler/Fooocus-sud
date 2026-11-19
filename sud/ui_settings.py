@@ -14,9 +14,11 @@
 import os
 import re
 import subprocess
+import sys
 
 import gradio as gr
 
+from sud import prefetch as P
 from sud import settings as S
 
 AUTO_LABEL = "(авто: первый чекпоинт из links.txt)"
@@ -152,6 +154,18 @@ def build():
         f["default_prompt_negative"] = gr.Textbox(label="Негативный промпт по умолчанию", lines=2,
                                                   value=cfg.get("default_prompt_negative", ""))
 
+    with gr.Accordion("Предзагрузка вспомогательных моделей", open=False):
+        gr.Markdown("Fooocus сам докачивает модели при первом включении опции. Отмеченное здесь "
+                    "качается заранее, **в фоне при каждом старте** (с HuggingFace, на диск Colab).")
+        selected = P.selected_groups()
+        f[P.SETTINGS_KEY] = gr.CheckboxGroup([P.group_label(g) for g in P.GROUPS],
+                                             value=[P.group_label(g) for g in selected],
+                                             label="Предзагружать при старте")
+        prefetch_status = gr.Markdown(_prefetch_status_md())
+        with gr.Row():
+            prefetch_now_btn = gr.Button("⬇️ Скачать отмеченное сейчас", variant="secondary")
+            prefetch_refresh_btn = gr.Button("🔄 Статус", variant="secondary")
+
     with gr.Row():
         save_btn = gr.Button("💾 Сохранить и перезапустить", variant="primary")
         reset_btn = gr.Button("↩️ Сбросить к базовым", variant="secondary")
@@ -177,12 +191,43 @@ def build():
         S.apply()
         return f"↩️ Настройки сброшены к базовым (presets/sud.json). {_restart()}"
 
+    def on_prefetch_now(labels):
+        groups = _labels_to_groups(labels)
+        if not groups:
+            return "Ничего не отмечено", _prefetch_status_md()
+        subprocess.Popen(f"{sys.executable} -m sud.prefetch run --groups {','.join(groups)} >> {P.LOG} 2>&1",
+                         shell=True, cwd=S.FOOOCUS_DIR, start_new_session=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return "⏳ Загрузка пошла в фоне. Жми «🔄 Статус», чтобы посмотреть.", _prefetch_status_md()
+
+    prefetch_now_btn.click(on_prefetch_now, f[P.SETTINGS_KEY], [status, prefetch_status], queue=False)
+    prefetch_refresh_btn.click(_prefetch_status_md, [], prefetch_status, queue=False)
     save_btn.click(on_save, comps, status, queue=False).then(None, _js=RELOAD_JS)
     reset_btn.click(on_reset, [], status, queue=False).then(None, _js=RELOAD_JS)
     return {"fields": f, "capture_btn": capture_btn}
 
 
+def _labels_to_groups(labels):
+    by_label = {P.group_label(g): g for g in P.GROUPS}
+    return [by_label[l] for l in (labels or []) if l in by_label]
+
+
+def _prefetch_status_md():
+    marks = {"done": "✅ скачано", "partial": "◐ частично", "none": "· нет"}
+    lines = [f"- {marks[P.group_status(g)]}: {P.GROUPS[g][0]}" for g in P.GROUPS]
+    tail = ""
+    try:
+        with open(P.LOG, encoding="utf-8") as fh:
+            last = [l.strip() for l in fh.readlines()[-3:] if l.strip()]
+        if last:
+            tail = "\n\nПоследнее в логе:\n" + "\n".join(f"`{l}`" for l in last)
+    except OSError:
+        pass
+    return "\n".join(lines) + tail
+
+
 def _validate_and_convert(d):
+    d[P.SETTINGS_KEY] = _labels_to_groups(d.get(P.SETTINGS_KEY))
     d["default_max_lora_number"] = int(d["default_max_lora_number"])
     d["default_max_image_number"] = int(d["default_max_image_number"])
     d["default_image_number"] = min(int(d["default_image_number"]), d["default_max_image_number"])

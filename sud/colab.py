@@ -340,6 +340,7 @@ unset PYTHONPATH
 cd {FOOOCUS_DIR}
 {py} -m pip install -q --disable-pip-version-check -r {PINS}
 {py} -m sud.settings apply  # settings.json (Drive) → config.txt
+nohup {py} -m sud.prefetch run >> /content/prefetch.log 2>&1 &  # вспомогательные модели в фоне
 exec {py} launch.py --port {port} --listen --always-high-vram --disable-analytics --disable-image-log {extra_args}
 """
     restart = f"""#!/bin/bash
