@@ -138,6 +138,19 @@ def _thumb(img_path, size=112):
     return uri
 
 
+def _folder(full):
+    """Папка эмбеддинга на Drive относительно models/embeddings ('' — корень).
+    Fooocus видит их плоским списком (ссылки), поэтому папку берём из того, куда ведёт ссылка."""
+    real = os.path.dirname(os.path.realpath(full))
+    for base in (os.path.realpath(paths.EMBEDDINGS), os.path.realpath(EMB_DIR)):
+        rel = os.path.relpath(real, base)
+        if rel == ".":
+            return ""
+        if not rel.startswith(".."):
+            return rel.replace(os.sep, "/")
+    return ""
+
+
 def _items(store):
     items = []
     if not os.path.isdir(EMB_DIR):
@@ -153,6 +166,7 @@ def _items(store):
             neg = store["negative"].get(name)
             items.append({
                 "name": name,
+                "folder": _folder(full),
                 "neg": bool(NEG_RE.search(name)) if neg is None else bool(neg),
                 "neg_auto": neg is None,
                 "fav": name in store["favorites"],

@@ -513,6 +513,20 @@ body.sud-drag-active, body.sud-drag-active * { user-select: none !important; cur
 .sud-em-star.on .sud-ico { fill: currentColor; }
 .sud-em-empty { grid-column: 1 / -1; padding: 16px; text-align: center; color: var(--body-text-color-subdued); }
 .sud-em-hint { margin-top: 10px; font-size: 11.5px; color: var(--body-text-color-subdued); line-height: 1.5; }
+.sud-em-body { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 10px; margin-top: 6px; }
+.sud-em-side { border-right: 1px solid var(--sud-line); padding-right: 8px; display: flex; flex-direction: column; gap: 1px;
+  position: sticky; top: 0; align-self: start; }
+.sud-em-f { display: flex; align-items: center; gap: 7px; width: 100%; padding: 5px 8px; border: 0; border-radius: 7px;
+  background: transparent; color: var(--body-text-color); font-size: 12.5px; cursor: pointer; text-align: left; }
+.sud-em-f span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sud-em-f i { font-style: normal; font-size: 11px; color: var(--body-text-color-subdued); }
+.sud-em-f .sud-ico { width: 15px; height: 15px; flex: none; opacity: 0.75; }
+.sud-em-f:hover { background: var(--sud-field); }
+.sud-em-f.on { background: var(--sud-field); color: var(--sud-accent); }
+.sud-em-f.on .sud-ico { opacity: 1; }
+.sud-em-fgap { height: 6px; }
+.sud-em-main .sud-em-sec:first-child { margin-top: 2px; }
+.sud-em-name small { display: block; font-size: 10px; color: var(--body-text-color-subdued); overflow: hidden; text-overflow: ellipsis; }
 
 /* панель живёт вне контейнера gradio — явно его шрифт */
 .sud-em-panel, .sud-em-panel button, .sud-em-panel input {
