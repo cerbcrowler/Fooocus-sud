@@ -42,6 +42,7 @@ def javascript_html():
     head += f'<meta name="samples-path" content="{samples_path}">\n'
     head += f'<script type="text/javascript" src="{webpath("javascript/sud-theme.js")}"></script>\n'  # Fooocus-sud
     head += f'<script type="text/javascript" src="{webpath("javascript/sud-autosave.js")}"></script>\n'  # Fooocus-sud
+    head += f'<script type="text/javascript" src="{webpath("javascript/sud-loras.js")}"></script>\n'  # Fooocus-sud
 
     if args_manager.args.theme:
         head += f'<script type="text/javascript">set_theme(\"{args_manager.args.theme}\");</script>\n'
@@ -53,6 +54,7 @@ def css_html():
     style_css_path = webpath('css/style.css')
     head = f'<link rel="stylesheet" property="stylesheet" href="{style_css_path}">'
     head += f'<link rel="stylesheet" property="stylesheet" href="{webpath("css/sud-gruvbox.css")}">'  # Fooocus-sud
+    head += f'<link rel="stylesheet" property="stylesheet" href="{webpath("css/sud-cards.css")}">'  # Fooocus-sud
     return head
 
 

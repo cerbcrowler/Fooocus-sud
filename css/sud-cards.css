@@ -1,0 +1,229 @@
+/* Fooocus-sud: компактные карточки (вкладка Models: Модель / LoRA / Сэмплинг).
+ * Разметку делает webui.py (elem_classes sud-*), поведение — javascript/sud-loras.js.
+ * Цвета берутся из переменных темы (css/sud-gruvbox.css), поэтому работает в обеих темах.
+ */
+
+/* ---------- карточка ---------- */
+.sud-card {
+  border: 1px solid var(--border-color-primary) !important;
+  border-radius: 12px !important;
+  background: var(--block-background-fill) !important;
+  overflow: hidden;
+  margin-bottom: 10px !important;
+  gap: 0 !important;
+}
+.sud-card > * { border: none !important; box-shadow: none !important; }
+.sud-card .block.padded { padding: 6px 10px !important; }
+
+.sud-card-head, .sud-card-head-html {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 4px !important;
+  min-height: 0 !important;
+}
+.sud-card-head > .block { padding: 0 !important; flex: 1 1 0 !important; min-width: 0 !important; width: auto !important; }
+.sud-card-head > button { margin-left: auto; }
+/* внутренние блоки карточки без собственной заливки */
+.sud-card .block, .sud-pair { background: transparent !important; }
+.sud-card-head-html { padding: 0 !important; }
+.sud-card .prose:has(.sud-card-head-html) { width: 100%; }
+.sud-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--body-text-color);
+  white-space: nowrap;
+}
+.sud-icon-btn {
+  flex: 0 0 auto !important;
+  width: 30px !important;
+  min-width: 30px !important;
+  height: 30px !important;
+  padding: 0 !important;
+  border-radius: 8px !important;
+  font-size: 14px !important;
+  line-height: 1 !important;
+  border: 1px solid var(--border-color-primary) !important;
+  background: var(--background-fill-secondary) !important;
+  color: var(--body-text-color-subdued) !important;
+  cursor: pointer;
+  margin-left: auto;
+}
+.sud-icon-btn:hover { color: var(--body-text-color) !important; background: var(--button-secondary-background-fill-hover) !important; }
+
+/* ---------- Модель ---------- */
+.sud-model-select { padding: 4px 10px 8px !important; }
+.sud-refiner { border-top: 1px solid var(--border-color-primary) !important; border-radius: 0 !important; }
+.sud-refiner > .label-wrap { font-size: 12px; color: var(--body-text-color-subdued); }
+
+/* ---------- LoRA ---------- */
+.sud-lora-count {
+  font-size: 12px;
+  color: var(--body-text-color-subdued);
+  margin-left: 2px;
+}
+.sud-lora-row {
+  display: grid !important;
+  grid-template-columns: 38px minmax(0, 1fr) 62px;
+  grid-template-rows: auto auto;
+  column-gap: 6px;
+  row-gap: 0;
+  align-items: center;
+  padding: 6px 10px 4px !important;
+  border-top: 1px solid var(--border-color-primary) !important;
+  position: relative;
+  flex-wrap: nowrap !important;
+}
+.sud-lora-row > * { min-width: 0 !important; width: auto !important; padding: 0 !important; }
+.sud-lora-row.sud-empty:not(.sud-revealed) { display: none !important; }
+.sud-lora-row.sud-off .sud-lora-label { opacity: 0.55; }
+
+.sud-lora-row > .sud-toggle { grid-column: 1; grid-row: 1 / span 2; align-self: center; }
+.sud-lora-row > .sud-lora-name { grid-column: 2; grid-row: 1; }
+.sud-lora-row > .sud-lora-weight { grid-column: 2 / 4; grid-row: 2; position: static !important; }
+
+/* переключатель вместо галочки */
+.sud-toggle label { gap: 0 !important; padding: 0 !important; background: none !important; border: none !important; box-shadow: none !important; }
+.sud-toggle label > span { display: none !important; }
+.sud-toggle input[type=checkbox] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 32px !important;
+  height: 18px !important;
+  border-radius: 9px !important;
+  border: none !important;
+  background: var(--border-color-primary) !important;
+  background-image: none !important;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  margin: 0 !important;
+}
+.sud-toggle input[type=checkbox]::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--background-fill-primary);
+  transition: left 0.15s ease;
+}
+.sud-toggle input[type=checkbox]:checked { background: var(--button-primary-background-fill) !important; }
+.sud-toggle input[type=checkbox]:checked::after { left: 16px; }
+
+/* имя лоры: папка мелко сверху, имя в 2 строки; при вводе — обычное поле поиска */
+.sud-lora-name .wrap { position: relative; border-radius: 8px !important; }
+.sud-lora-name .wrap.sud-has-label .wrap-inner { min-height: 46px; }
+.sud-lora-label {
+  position: absolute;
+  inset: 0 26px 0 0;
+  z-index: 1;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 2px 4px 2px 10px;
+  line-height: 1.2;
+  font-size: 13px;
+  color: var(--body-text-color);
+  word-break: break-all;
+  overflow: hidden;
+}
+.sud-lora-label small {
+  display: block;
+  font-size: 10.5px;
+  color: var(--body-text-color-subdued);
+  letter-spacing: 0.02em;
+}
+.sud-lora-name:not(:focus-within) .sud-has-label input {
+  color: transparent !important;
+  caret-color: transparent;
+  cursor: pointer;
+}
+.sud-lora-name:focus-within .sud-lora-label { display: none; }
+
+/* вес: число справа от имени, ползунок тонкой полосой под строкой */
+.sud-lora-weight .wrap { position: static !important; }
+.sud-lora-weight .head label { display: none !important; }
+.sud-lora-weight input[type=number] {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 58px !important;
+  height: 30px;
+  text-align: center;
+  font-size: 13px !important;
+  border-radius: 8px !important;
+  padding: 0 4px !important;
+}
+.sud-lora-weight input[type=range] { height: 14px; margin: 2px 0 0 !important; }
+
+.sud-lora-add {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-top: 1px solid var(--border-color-primary);
+  background: transparent;
+  color: var(--button-primary-background-fill);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.sud-lora-add:hover { background: var(--background-fill-secondary); }
+.sud-lora-add[disabled] { color: var(--body-text-color-subdued); cursor: default; }
+.sud-lora-card .block:has(.sud-lora-add) { padding: 0 !important; }
+
+/* ---------- Сэмплинг ---------- */
+.sud-pair { gap: 8px !important; padding: 0 10px !important; }
+.sud-pair > .block { padding: 4px 0 !important; }
+
+/* компактный ползунок: «название | полоса | число» в одну строку */
+.sud-compact-slider {
+  display: grid !important;
+  grid-template-columns: 96px minmax(0, 1fr) 62px;
+  align-items: center;
+  column-gap: 10px;
+  padding: 4px 10px !important;
+}
+.sud-compact-slider > .wrap:not(.hide):not(.full),
+.sud-compact-slider > .wrap > .head { display: contents !important; }
+.sud-compact-slider label { grid-column: 1; grid-row: 1; margin: 0 !important; }
+.sud-compact-slider label span { font-size: 12px !important; color: var(--body-text-color-subdued) !important; margin: 0 !important; }
+.sud-compact-slider input[type=range] { grid-column: 2; grid-row: 1; margin: 0 !important; }
+.sud-compact-slider input[type=number] {
+  grid-column: 3;
+  grid-row: 1;
+  width: 100% !important;
+  height: 28px;
+  text-align: center;
+  font-size: 13px !important;
+  border-radius: 8px !important;
+}
+
+/* выпадающие списки внутри карточек — поверх соседних карточек, с рамкой */
+.sud-card { overflow: visible !important; }
+.sud-card:focus-within { z-index: 30; position: relative; }
+.sud-lora-row:focus-within, .sud-pair:focus-within, .sud-model-select:focus-within { z-index: 31; }
+.sud-card ul.options {
+  z-index: 1000 !important;
+  border: 1px solid var(--border-color-primary) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35) !important;
+  background: var(--background-fill-secondary) !important;
+}
+
+/* gradio красит слой группы (.styler) цветом рамки — у карточек фон должен быть ровным */
+.sud-card .styler, .sud-card > div { background: transparent !important; }
+.sud-card { background: var(--block-background-fill) !important; }
+
+/* выключенный переключатель заметнее */
+:root { --sud-toggle-off: #bdae93; }
+.dark { --sud-toggle-off: #665c54; }
+.sud-toggle input[type=checkbox]:not(:checked) { background: var(--sud-toggle-off) !important; }
+
+/* gradio объединяет соседние поля в .form с заливкой и разделителями */
+.sud-card .form { background: transparent !important; border: none !important; box-shadow: none !important; gap: 0 !important; }

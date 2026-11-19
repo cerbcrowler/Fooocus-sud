@@ -653,51 +653,65 @@ with shared.gradio_root:
                                                        show_progress=False).then(
                     lambda: None, _js='()=>{refresh_style_localization();}')
 
-            with gr.Tab(label='Models'):
-                with gr.Group():
-                    with gr.Row():
-                        base_model = gr.Dropdown(label='Base Model (SDXL only)', choices=modules.config.model_filenames, value=modules.config.default_base_model_name, show_label=True)
+            with gr.Tab(label='Models'):  # Fooocus-sud: карточки «Модель / LoRA / Сэмплинг»
+                with gr.Group(elem_classes=['sud-card', 'sud-model-card']):
+                    with gr.Row(elem_classes='sud-card-head'):
+                        gr.HTML('<div class="sud-card-title">\U0001F9F1 Модель</div>')
+                        refresh_files = gr.Button(value='\U0001f504', variant='secondary',
+                                                  elem_classes=['sud-icon-btn', 'refresh_button'], scale=0, min_width=34)
+                    base_model = gr.Dropdown(label='Base Model (SDXL only)', choices=modules.config.model_filenames, value=modules.config.default_base_model_name, show_label=False, container=False, elem_classes='sud-model-select')
+                    with gr.Accordion('Refiner', open=modules.config.default_refiner_model_name != 'None', elem_classes='sud-refiner'):
                         refiner_model = gr.Dropdown(label='Refiner (SDXL or SD 1.5)', choices=['None'] + modules.config.model_filenames, value=modules.config.default_refiner_model_name, show_label=True)
-
-                    refiner_switch = gr.Slider(label='Refiner Switch At', minimum=0.1, maximum=1.0, step=0.0001,
-                                               info='Use 0.4 for SD1.5 realistic models; '
-                                                    'or 0.667 for SD1.5 anime models; '
-                                                    'or 0.8 for XL-refiners; '
-                                                    'or any value for switching two SDXL models.',
-                                               value=modules.config.default_refiner_switch,
-                                               visible=modules.config.default_refiner_model_name != 'None')
+                        refiner_switch = gr.Slider(label='Refiner Switch At', minimum=0.1, maximum=1.0, step=0.0001,
+                                                   info='Use 0.4 for SD1.5 realistic models; '
+                                                        'or 0.667 for SD1.5 anime models; '
+                                                        'or 0.8 for XL-refiners; '
+                                                        'or any value for switching two SDXL models.',
+                                                   value=modules.config.default_refiner_switch,
+                                                   visible=modules.config.default_refiner_model_name != 'None')
 
                     refiner_model.change(lambda x: gr.update(visible=x != 'None'),
                                          inputs=refiner_model, outputs=refiner_switch, show_progress=False, queue=False)
 
-                with gr.Group():
+                with gr.Group(elem_classes=['sud-card', 'sud-lora-card']):
+                    gr.HTML('<div class="sud-card-head-html"><div class="sud-card-title">\U0001F39A LoRA</div>'
+                            '<span class="sud-lora-count"></span>'
+                            '<button type="button" class="sud-icon-btn sud-lora-alloff" title="Выключить все">⏻</button></div>')
                     lora_ctrls = []
 
                     for i, (enabled, filename, weight) in enumerate(modules.config.default_loras):
-                        with gr.Row():
-                            lora_enabled = gr.Checkbox(label='Enable', value=enabled,
-                                                       elem_classes=['lora_enable', 'min_check'], scale=1)
-                            lora_model = gr.Dropdown(label=f'LoRA {i + 1}',
+                        with gr.Row(elem_classes='sud-lora-row'):
+                            lora_enabled = gr.Checkbox(label='Enable', value=enabled, container=False,
+                                                       elem_classes=['lora_enable', 'min_check', 'sud-toggle'], scale=0, min_width=40)
+                            lora_model = gr.Dropdown(label=f'LoRA {i + 1}', show_label=False, container=False,
                                                      choices=['None'] + modules.config.lora_filenames, value=filename,
-                                                     elem_classes='lora_model', scale=5)
-                            lora_weight = gr.Slider(label='Weight', minimum=modules.config.default_loras_min_weight,
+                                                     elem_classes=['lora_model', 'sud-lora-name'], scale=5)
+                            lora_weight = gr.Slider(label='Weight', show_label=False, container=False,
+                                                    minimum=modules.config.default_loras_min_weight,
                                                     maximum=modules.config.default_loras_max_weight, step=0.01, value=weight,
-                                                    elem_classes='lora_weight', scale=5)
+                                                    elem_classes=['lora_weight', 'sud-lora-weight'], scale=5)
                             lora_ctrls += [lora_enabled, lora_model, lora_weight]
+                    gr.HTML('<button type="button" class="sud-lora-add">＋ Добавить LoRA</button>')
 
-                with gr.Row():
-                    refresh_files = gr.Button(label='Refresh', value='\U0001f504 Refresh All Files', variant='secondary', elem_classes='refresh_button')
+                with gr.Group(elem_classes=['sud-card', 'sud-sampling-card']):
+                    gr.HTML('<div class="sud-card-head-html"><div class="sud-card-title">\U0001F39B Сэмплинг</div></div>')
+                    with gr.Row(elem_classes='sud-pair'):
+                        sampler_name = gr.Dropdown(label='Sampler', choices=flags.sampler_list,
+                                                   value=modules.config.default_sampler)
+                        scheduler_name = gr.Dropdown(label='Scheduler', choices=flags.scheduler_list,
+                                                     value=modules.config.default_scheduler)
+                    guidance_scale = gr.Slider(label='CFG', minimum=1.0, maximum=30.0, step=0.01,
+                                               value=modules.config.default_cfg_scale, elem_classes='sud-compact-slider')
+                    overwrite_step = gr.Slider(label='Шаги (-1 = авто)',
+                                               minimum=-1, maximum=200, step=1,
+                                               value=modules.config.default_overwrite_step, elem_classes='sud-compact-slider')
+                    sharpness = gr.Slider(label='Резкость', minimum=0.0, maximum=30.0, step=0.001,
+                                          value=modules.config.default_sample_sharpness, elem_classes='sud-compact-slider')
             with gr.Tab(label='\U0001F4E6 Менеджер'):  # Fooocus-sud
                 sud_manager = sud.ui_models.build()
             with gr.Tab(label='⚙️ Настройки'):  # Fooocus-sud
                 sud_settings = sud.ui_settings.build()
-            with gr.Tab(label='Advanced'):
-                guidance_scale = gr.Slider(label='Guidance Scale', minimum=1.0, maximum=30.0, step=0.01,
-                                           value=modules.config.default_cfg_scale,
-                                           info='Higher value means style is cleaner, vivider, and more artistic.')
-                sharpness = gr.Slider(label='Image Sharpness', minimum=0.0, maximum=30.0, step=0.001,
-                                      value=modules.config.default_sample_sharpness,
-                                      info='Higher value means image and texture are sharper.')
+            with gr.Tab(label='Advanced'):  # CFG и резкость переехали в Models → Сэмплинг (Fooocus-sud)
                 gr.HTML('<a href="https://github.com/lllyasviel/Fooocus/discussions/117" target="_blank">\U0001F4D4 Documentation</a>')
                 dev_mode = gr.Checkbox(label='Developer Debug Mode', value=modules.config.default_developer_debug_mode_checkbox, container=False)
 
@@ -721,10 +735,7 @@ with shared.gradio_root:
                         clip_skip = gr.Slider(label='CLIP Skip', minimum=1, maximum=flags.clip_skip_max, step=1,
                                                  value=modules.config.default_clip_skip,
                                                  info='Bypass CLIP layers to avoid overfitting (use 1 to not skip any layers, 2 is recommended).')
-                        sampler_name = gr.Dropdown(label='Sampler', choices=flags.sampler_list,
-                                                   value=modules.config.default_sampler)
-                        scheduler_name = gr.Dropdown(label='Scheduler', choices=flags.scheduler_list,
-                                                     value=modules.config.default_scheduler)
+                        # Sampler / Scheduler переехали в Models → Сэмплинг (Fooocus-sud)
                         vae_name = gr.Dropdown(label='VAE', choices=[modules.flags.default_vae] + modules.config.vae_filenames,
                                                      value=modules.config.default_vae, show_label=True)
 
@@ -732,10 +743,7 @@ with shared.gradio_root:
                                                           info='(Experimental) This may cause performance problems on some computers and certain internet conditions.',
                                                           value=False)
 
-                        overwrite_step = gr.Slider(label='Forced Overwrite of Sampling Step',
-                                                   minimum=-1, maximum=200, step=1,
-                                                   value=modules.config.default_overwrite_step,
-                                                   info='Set as -1 to disable. For developer debugging.')
+                        # Forced Overwrite of Sampling Step → Models → Сэмплинг «Шаги» (Fooocus-sud)
                         overwrite_switch = gr.Slider(label='Forced Overwrite of Refiner Switch Step',
                                                      minimum=-1, maximum=200, step=1,
                                                      value=modules.config.default_overwrite_switch,
