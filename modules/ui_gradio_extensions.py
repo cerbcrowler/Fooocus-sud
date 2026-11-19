@@ -47,6 +47,7 @@ def javascript_html():
     head += f'<script type="text/javascript" src="{webpath("javascript/sud-manager.js")}"></script>\n'  # Fooocus-sud
     head += f'<script type="text/javascript" src="{webpath("javascript/sud-presets.js")}"></script>\n'  # Fooocus-sud
     head += f'<script type="text/javascript" src="{webpath("javascript/sud-translate.js")}"></script>\n'  # Fooocus-sud
+    head += f'<script type="text/javascript" src="{webpath("javascript/sud-embeddings.js")}"></script>\n'  # Fooocus-sud
 
     if args_manager.args.theme:
         head += f'<script type="text/javascript">set_theme(\"{args_manager.args.theme}\");</script>\n'

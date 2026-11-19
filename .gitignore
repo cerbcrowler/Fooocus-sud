@@ -59,3 +59,5 @@ user_path_config-deprecated.txt
 /sud_settings.json
 /sud_sizes.json
 /sud_sampling_presets.json
+/sud_embeddings_cache.json
+/sud_embeddings.json
