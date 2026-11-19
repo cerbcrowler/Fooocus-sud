@@ -339,7 +339,7 @@ unset PYTHONPATH
 {exports}
 cd {FOOOCUS_DIR}
 {py} -m pip install -q --disable-pip-version-check -r {PINS}
-exec {py} launch.py --port {port} --listen --always-high-vram --preset sud --disable-analytics {extra_args}
+exec {py} launch.py --port {port} --listen --always-high-vram --preset sud --disable-analytics --disable-image-log {extra_args}
 """
     restart = f"""#!/bin/bash
 # Подтянуть код форка и перезапустить Fooocus в фоне. Лог: {FOOOCUS_LOG}
@@ -348,6 +348,8 @@ branch=$(git -C {FOOOCUS_DIR} rev-parse --abbrev-ref HEAD)
 git -C {FOOOCUS_DIR} fetch -q origin "$branch"
 git -C {FOOOCUS_DIR} reset -q --hard "origin/$branch"
 git -C {FOOOCUS_DIR} log --oneline -1
+# пересобрать скрипты запуска свежим кодом (флаги запуска могли поменяться)
+python3 -c "import sys; sys.path.insert(0, '{FOOOCUS_DIR}'); import sud.colab as c; c._write_run_scripts({py!r}, {port}, {extra_args!r})"
 pkill -f '[l]aunch.py --port {port}' || true
 sleep 3
 nohup bash {RUN_SCRIPT} > {FOOOCUS_LOG} 2>&1 &

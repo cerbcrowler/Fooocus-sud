@@ -41,6 +41,7 @@ def javascript_html():
     head += f'<script type="text/javascript" src="{image_viewer_js_path}"></script>\n'
     head += f'<meta name="samples-path" content="{samples_path}">\n'
     head += f'<script type="text/javascript" src="{webpath("javascript/sud-theme.js")}"></script>\n'  # Fooocus-sud
+    head += f'<script type="text/javascript" src="{webpath("javascript/sud-autosave.js")}"></script>\n'  # Fooocus-sud
 
     if args_manager.args.theme:
         head += f'<script type="text/javascript">set_theme(\"{args_manager.args.theme}\");</script>\n'

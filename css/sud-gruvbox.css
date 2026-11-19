@@ -187,3 +187,76 @@ input[type=range] { accent-color: var(--slider-color); }
   transition: transform 0.15s ease;
 }
 #sud-theme-toggle:hover { transform: scale(1.1); }
+
+/* --- автосохранение на ноут (javascript/sud-autosave.js) --- */
+#sud-autosave-btn {
+  position: fixed;
+  bottom: 14px;
+  right: 58px;
+  z-index: 1000;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color-primary);
+  background: var(--background-fill-secondary);
+  color: var(--body-text-color);
+  font-size: 17px;
+  line-height: 34px;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: var(--shadow-drop);
+  transition: transform 0.15s ease;
+}
+#sud-autosave-btn:hover { transform: scale(1.1); }
+#sud-autosave-btn.on { border: 2px solid #98971a; }    /* gruvbox green */
+#sud-autosave-btn.warn { border: 2px solid #d79921; animation: sud-pulse 1.5s infinite; } /* yellow */
+#sud-autosave-btn.off { opacity: 0.75; }
+@keyframes sud-pulse { 50% { box-shadow: 0 0 0 5px rgba(215, 153, 33, 0.35); } }
+
+#sud-autosave-panel {
+  display: none;
+  position: fixed;
+  bottom: 58px;
+  right: 14px;
+  z-index: 1001;
+  min-width: 240px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color-primary);
+  background: var(--background-fill-secondary);
+  color: var(--body-text-color);
+  font-size: 13px;
+  line-height: 1.7;
+  box-shadow: var(--shadow-drop-lg);
+}
+#sud-autosave-panel.show { display: block; }
+#sud-autosave-panel .sud-as-title { font-weight: 600; margin-bottom: 4px; }
+#sud-autosave-panel .sud-as-buttons { display: flex; gap: 8px; margin-top: 8px; }
+#sud-autosave-panel button {
+  flex: 1;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--button-secondary-border-color);
+  background: var(--button-secondary-background-fill);
+  color: var(--button-secondary-text-color);
+  cursor: pointer;
+}
+#sud-autosave-panel button:disabled { opacity: 0.5; cursor: default; }
+
+#sud-autosave-toast {
+  position: fixed;
+  bottom: 58px;
+  right: 104px;
+  z-index: 1002;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--background-fill-secondary);
+  color: var(--body-text-color);
+  border: 1px solid var(--border-color-primary);
+  font-size: 13px;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  pointer-events: none;
+}
+#sud-autosave-toast.show { opacity: 1; transform: none; }
