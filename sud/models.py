@@ -29,7 +29,7 @@ import shutil
 import zipfile
 from urllib.parse import unquote
 
-KNOWN_SECTIONS = {"CHECKPOINTS", "LORAS", "WILDCARDS", "EMBEDDING ZIP"}
+KNOWN_SECTIONS = {"CHECKPOINTS", "LORAS", "EMBEDDINGS", "WILDCARDS", "EMBEDDING ZIP"}
 LORA_EXTS = (".safetensors", ".ckpt", ".pt")
 EMBED_EXTS = (".safetensors", ".pt", ".bin")
 SKIP_DIRS = {"LINKS", "EMBEDDINGS"}  # служебные папки на Drive, это не лоры
@@ -267,10 +267,125 @@ def write_config(paths, default_model):
     log(f"✅ {paths.config_txt}: default_model = {default_model}")
 
 
+# ---------- для менеджера в GUI ----------
+
+# тип в интерфейсе → (секция links.txt, папка в Paths, расширения)
+KINDS = {
+    "Чекпоинт": ("CHECKPOINTS", "checkpoints", (".safetensors", ".ckpt")),
+    "LoRA": ("LORAS", "loras", LORA_EXTS),
+    "Эмбеддинг": ("EMBEDDINGS", "embeddings", EMBED_EXTS),
+}
+STATE_FILE = "sud_state.json"  # в папке Fooocus (не в git): где Drive и links.txt этой сессии
+
+
+def save_state(fooocus_dir, drive_base):
+    with open(os.path.join(fooocus_dir, STATE_FILE), "w", encoding="utf-8") as f:
+        json.dump({"drive_base": drive_base}, f)
+
+
+def load_paths(fooocus_dir):
+    """Paths текущей сессии (drive_base берём из того, что записал sync)."""
+    drive_base = None
+    try:
+        with open(os.path.join(fooocus_dir, STATE_FILE), encoding="utf-8") as f:
+            drive_base = json.load(f).get("drive_base")
+    except Exception:
+        pass
+    return Paths(fooocus_dir, drive_base or "/content/drive/MyDrive/COLAB_MOUNTS/models/loras2")
+
+
+def add_link(links_file, section, url, new_name=None):
+    """Дописать ссылку в нужную секцию links.txt (секцию создаёт, дубли не пишет).
+
+    Возвращает True, если строка добавлена.
+    """
+    line = f"{url} | {new_name}" if new_name else url
+    lines = []
+    if os.path.isfile(links_file):
+        with open(links_file, encoding="utf-8") as f:
+            lines = f.read().splitlines()
+
+    current, insert_at, has_section = None, None, False
+    for i, raw in enumerate(lines):
+        clean = _COMMENT_RE.sub("", raw).strip()
+        header = re.fullmatch(r"\[(.+?)\]", clean)
+        if header:
+            current = header.group(1).strip().upper()
+            if current == section:
+                has_section, insert_at = True, i + 1
+            continue
+        if clean and current == section:
+            if clean.split("|", 1)[0].strip() == url:
+                return False  # уже есть
+            insert_at = i + 1
+
+    if has_section:
+        lines.insert(insert_at, line)
+    else:
+        if lines and lines[-1].strip():
+            lines.append("")
+        lines += [f"[{section}]", line]
+
+    os.makedirs(os.path.dirname(links_file), exist_ok=True)
+    with open(links_file, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    return True
+
+
+def human_size(n):
+    for unit in ("Б", "КБ", "МБ", "ГБ"):
+        if n < 1024 or unit == "ГБ":
+            return f"{n:.0f} {unit}" if unit in ("Б", "КБ") else f"{n:.1f} {unit}"
+        n /= 1024
+
+
+def list_files(paths):
+    """Строки таблицы: [тип, файл, размер, откуда]."""
+    links = parse_links_file(paths.links_file) if os.path.isfile(paths.links_file) else {}
+    from_links = {}
+    for section, items in links.items():
+        for url, new_name in items:
+            _, filename = parse_hf_url(url)
+            if filename:
+                from_links[(section, resolve_target_name(filename, new_name))] = True
+
+    rows = []
+    for kind, (section, attr, exts) in KINDS.items():
+        root = getattr(paths, attr)
+        if not os.path.isdir(root):
+            continue
+        for dirpath, _, files in os.walk(root):
+            for fname in sorted(files):
+                if not fname.endswith(exts):
+                    continue
+                full = os.path.join(dirpath, fname)
+                rel = os.path.relpath(full, root)
+                try:
+                    size = human_size(os.path.getsize(full))
+                except OSError:
+                    size = "?"
+                if os.path.islink(full):
+                    source = "Google Drive"
+                elif (section, fname) in from_links:
+                    source = "links.txt"
+                else:
+                    source = "локально"
+                rows.append([kind, rel, size, source])
+    return rows
+
+
+def download(paths, kind, url, new_name=None, token=None):
+    """Скачать одну модель по ссылке HF в папку нужного типа. Возвращает путь или None."""
+    section, attr, _ = KINDS[kind]
+    min_mb = {"CHECKPOINTS": 10, "LORAS": 1}.get(section, 0)
+    return download_from_hf(url, new_name, getattr(paths, attr), token=token, min_size_mb=min_mb)
+
+
 # ---------- главное ----------
 
 def sync(fooocus_dir, drive_base, hf_token=None):
     p = Paths(fooocus_dir, drive_base)
+    save_state(fooocus_dir, drive_base)
 
     log(f"=== 1️⃣ СПИСОК: {p.links_file} ===")
     links = parse_links_file(p.links_file)
@@ -290,6 +405,7 @@ def sync(fooocus_dir, drive_base, hf_token=None):
     for section, dest, min_mb in [
         ("CHECKPOINTS", p.checkpoints, 10),
         ("LORAS", p.loras, 1),
+        ("EMBEDDINGS", p.embeddings, 0),
         ("WILDCARDS", p.wildcards, 0),
     ]:
         items = links.get(section, [])

@@ -53,6 +53,12 @@ def models(drive_base):
     hf_token = _secret("HF_TOKEN")
     print(f"✅ HF-токен: {hf_token[:7]}..." if hf_token
           else "⚠️ HF-токена нет: приватные модели не скачаются")
+    if hf_token:
+        # стандартное место huggingface_hub: отсюда токен возьмёт и менеджер моделей в Fooocus
+        os.makedirs("/root/.cache/huggingface", exist_ok=True)
+        with open("/root/.cache/huggingface/token", "w") as f:
+            f.write(hf_token)
+        os.chmod("/root/.cache/huggingface/token", 0o600)
 
     importlib.reload(sud.models)
     print()
