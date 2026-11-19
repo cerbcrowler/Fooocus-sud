@@ -21,7 +21,8 @@ TUNNEL_LOG = "/content/tunnel.log"
 
 def sh(cmd, check=False):
     """Выполнить команду, показать вывод, вернуть CompletedProcess."""
-    r = subprocess.run(cmd, shell=True, text=True, capture_output=True)
+    # bash, а не /bin/sh: в Colab sh = dash, он не знает pipefail и прочее
+    r = subprocess.run(cmd, shell=True, text=True, capture_output=True, executable="/bin/bash")
     out = (r.stdout + r.stderr).strip()
     if out:
         print(out, flush=True)
@@ -312,8 +313,12 @@ def ensure_venv(cache_dir=VENV_CACHE_DIR):
         if archive and os.path.exists(archive):
             if _restore_venv(archive) and _venv_healthy(py):
                 return py  # из кэша: сохранять заново не нужно
-            print("⚠️ Архив на Drive битый, удаляю его и собираю venv заново")
-            os.remove(archive)
+            # удаляем, только если сам архив действительно повреждён (а не наша команда упала)
+            if sh(f"zstd -t -q '{archive}'").returncode != 0:
+                print("⚠️ Архив на Drive повреждён, удаляю его и собираю venv заново")
+                os.remove(archive)
+            else:
+                print("⚠️ Архив целый, но venv из него не завёлся: собираю заново (архив оставляю)")
         _build_venv(py)
 
     if archive and not os.path.exists(archive):
