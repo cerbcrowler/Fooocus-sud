@@ -28,6 +28,7 @@ import sud.ui_settings  # Fooocus-sud: вкладка «Настройки»
 import sud.ui_cards  # Fooocus-sud: иконки и заголовки карточек
 import sud.ui_loras  # Fooocus-sud: удаление и перестановка лор
 import sud.ui_aspect  # Fooocus-sud: карточка «Разрешение»
+import sud.ui_manager  # Fooocus-sud: менеджер моделей
 
 def get_task(*args):
     args = list(args)
@@ -911,6 +912,7 @@ with shared.gradio_root:
                     sampler=sampler_name, scheduler=scheduler_name, cfg=guidance_scale, sharpness=sharpness,
                     overwrite_step=overwrite_step, styles=style_selections, aspect_ratio=aspect_ratios_selection,
                     image_number=image_number, output_format=output_format, negative_prompt=negative_prompt))
+                sud.ui_manager.build(base_model)  # Fooocus-sud: полноэкранный менеджер моделей (кнопка 📦)
 
         state_is_generating = gr.State(False)
 

@@ -61,35 +61,21 @@ class Paths:
 _COMMENT_RE = re.compile(r"(?:^|\s)#.*$")  # комментарий: '#' в начале строки или после пробела
 
 
-def parse_links_file(path):
-    """Возвращает {СЕКЦИЯ: [(url, новое_имя | None), ...]}."""
-    sections, current = {}, None
+def parse_links_file(path, autoload_only=True):
+    """Возвращает {СЕКЦИЯ: [(url, новое_имя | None), ...]}.
+
+    Формат — см. sud/catalog.py (категории «[CHECKPOINTS: Реализм]», «*» = грузить при старте).
+    autoload_only=True — только то, что грузится при старте (для старого формата без «*» — всё).
+    """
+    from sud.catalog import Catalog
     if not os.path.isfile(path):
         log(f"❌ Файл со ссылками не найден: {path}")
-        return sections
-
-    with open(path, encoding="utf-8") as f:
-        for raw in f:
-            line = _COMMENT_RE.sub("", raw.rstrip("\n")).strip()
-            if not line:
-                continue
-
-            header = re.fullmatch(r"\[(.+?)\]", line)
-            if header:
-                current = header.group(1).strip().upper()
-                sections.setdefault(current, [])
-                continue
-
-            if current is None:
-                log(f"⚠️ Строка вне секции, пропущена: {line}")
-                continue
-
-            if "|" in line:
-                url, new_name = [p.strip() for p in line.split("|", 1)]
-                new_name = new_name or None
-            else:
-                url, new_name = line, None
-            sections[current].append((url, new_name))
+        return {}
+    sections = {}
+    for e in Catalog(path).entries():
+        sections.setdefault(e.kind, [])
+        if e.autoload or not autoload_only:
+            sections[e.kind].append((e.url, e.name or None))
     return sections
 
 
@@ -284,41 +270,9 @@ def load_paths(fooocus_dir):
 
 
 def add_link(links_file, section, url, new_name=None):
-    """Дописать ссылку в нужную секцию links.txt (секцию создаёт, дубли не пишет).
-
-    Возвращает True, если строка добавлена.
-    """
-    line = f"{url} | {new_name}" if new_name else url
-    lines = []
-    if os.path.isfile(links_file):
-        with open(links_file, encoding="utf-8") as f:
-            lines = f.read().splitlines()
-
-    current, insert_at, has_section = None, None, False
-    for i, raw in enumerate(lines):
-        clean = _COMMENT_RE.sub("", raw).strip()
-        header = re.fullmatch(r"\[(.+?)\]", clean)
-        if header:
-            current = header.group(1).strip().upper()
-            if current == section:
-                has_section, insert_at = True, i + 1
-            continue
-        if clean and current == section:
-            if clean.split("|", 1)[0].strip() == url:
-                return False  # уже есть
-            insert_at = i + 1
-
-    if has_section:
-        lines.insert(insert_at, line)
-    else:
-        if lines and lines[-1].strip():
-            lines.append("")
-        lines += [f"[{section}]", line]
-
-    os.makedirs(os.path.dirname(links_file), exist_ok=True)
-    with open(links_file, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
-    return True
+    """Дописать ссылку в links.txt с пометкой «грузить при старте». True — если добавлена."""
+    from sud.catalog import Catalog
+    return Catalog(links_file).add(section, url, name=new_name or "", star=True)
 
 
 def human_size(n):
@@ -330,7 +284,7 @@ def human_size(n):
 
 def list_files(paths):
     """Строки таблицы: [тип, файл, размер, откуда]."""
-    links = parse_links_file(paths.links_file) if os.path.isfile(paths.links_file) else {}
+    links = parse_links_file(paths.links_file, autoload_only=False) if os.path.isfile(paths.links_file) else {}
     from_links = {}
     for section, items in links.items():
         for url, new_name in items:
