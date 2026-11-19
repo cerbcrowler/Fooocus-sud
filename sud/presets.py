@@ -9,13 +9,13 @@ import os
 
 from sud.settings import DRIVE_ROOT, FOOOCUS_DIR
 
-DRIVE_PATH = os.path.join(DRIVE_ROOT, "COLAB_MOUNTS", "fooocus-sud", "sampling_presets.json")
 LOCAL_PATH = os.path.join(FOOOCUS_DIR, "sud_sampling_presets.json")
 FIELDS = ("sampler", "scheduler", "cfg", "steps", "sharpness")
 
 
 def path():
-    return DRIVE_PATH if os.path.isdir(DRIVE_ROOT) else LOCAL_PATH
+    from sud import paths
+    return paths.settings_file("sampling_presets.json") if paths.drive_mounted() else LOCAL_PATH
 
 
 def load():

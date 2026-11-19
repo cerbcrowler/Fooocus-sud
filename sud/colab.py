@@ -45,7 +45,7 @@ def _secret(name):
 
 # ---------- ячейка 2: Drive + модели ----------
 
-def models(drive_base):
+def models(drive_base=None):   # drive_base — устаревший параметр, пути в sud/paths.py
     from google.colab import drive
     import importlib
     import sud.models
@@ -207,7 +207,7 @@ VENV_PYTHON_VERSION = "3.10"  # под неё закреплены requirements_
 
 TORCH_SPEC = "torch==2.1.0 torchvision==0.16.0"  # как в launch.py
 TORCH_INDEX = "https://download.pytorch.org/whl/cu121"
-VENV_CACHE_DIR = "/content/drive/MyDrive/COLAB_MOUNTS/cache"
+VENV_CACHE_DIR = "/content/drive/MyDrive/FOOOCUS-SUD/cache"   # = sud.paths.CACHE
 VENV_CACHE_FORMAT = 1  # поднять, если поменяется способ упаковки
 VENV_CACHE_LOG = "/content/venv-cache.log"
 VENV_SAVE_SCRIPT = "/content/venv_save.sh"
@@ -316,15 +316,22 @@ def ensure_venv(cache_dir=VENV_CACHE_DIR):
     """
     py = f"{VENV}/bin/python"
     _ensure_tools()
-    archive = None
+    archive = legacy = None
     if os.path.ismount("/content/drive"):
-        archive = os.path.join(cache_dir, f"venv-fooocus-{_venv_cache_key()}.tar.zst")
+        from sud import paths
+        name = f"venv-fooocus-{_venv_cache_key()}.tar.zst"
+        archive = os.path.join(cache_dir, name)
+        legacy = os.path.join(paths.LEGACY_CACHE, name)   # кэш со старого места тоже годится
     else:
         print("ℹ️ Drive не смонтирован (ячейка 2): кэш venv не используется")
 
     if os.path.exists(py) and _venv_healthy(py):
         print("✅ venv уже готов", flush=True)
     else:
+        if archive and not os.path.exists(archive) and legacy and os.path.exists(legacy):
+            if _restore_venv(legacy) and _venv_healthy(py):
+                _save_venv_bg(archive)    # перепаковать в новую папку cache/
+                return py
         if archive and os.path.exists(archive):
             if _restore_venv(archive) and _venv_healthy(py):
                 return py  # из кэша: сохранять заново не нужно

@@ -16,7 +16,6 @@ import sys
 
 FOOOCUS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DRIVE_ROOT = "/content/drive/MyDrive"
-DRIVE_SETTINGS = os.path.join(DRIVE_ROOT, "COLAB_MOUNTS", "fooocus-sud", "settings.json")
 LOCAL_SETTINGS = os.path.join(FOOOCUS_DIR, "sud_settings.json")  # если Drive не смонтирован
 BASE_PRESET = os.path.join(FOOOCUS_DIR, "presets", "sud.json")
 STATE_FILE = os.path.join(FOOOCUS_DIR, "sud_state.json")
@@ -42,7 +41,8 @@ def _write(path, data):
 
 
 def settings_path():
-    return DRIVE_SETTINGS if os.path.isdir(DRIVE_ROOT) else LOCAL_SETTINGS
+    from sud import paths
+    return paths.settings_file("settings.json") if paths.drive_mounted() else LOCAL_SETTINGS
 
 
 def load_user():

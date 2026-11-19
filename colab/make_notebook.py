@@ -20,7 +20,6 @@ md_intro = """# Fooocus-sud в Colab
 
 cell1 = r'''# @title 1️⃣ Настройки + GPU + клон форка
 BRANCH     = "main"  # @param {type:"string"}
-DRIVE_BASE = "/content/drive/MyDrive/COLAB_MOUNTS/models/loras2"  # @param {type:"string"}
 VPS_HOST   = "128.140.12.50"  # @param {type:"string"}
 VPS_USER   = "root"  # @param {type:"string"}
 VPS_BIND   = "172.18.0.1:8080"  # @param {type:"string"}
@@ -65,7 +64,7 @@ print("✅ Код на месте")
 '''
 
 cell2 = r'''# @title 2️⃣ Google Drive + модели (links.txt)
-sc.models(DRIVE_BASE)
+sc.models()   # модели, лоры, эмбеддинги: MyDrive/FOOOCUS-SUD (см. README.txt там)
 '''
 
 cell3 = r'''# @title 3️⃣ Пароль + туннель на VPS

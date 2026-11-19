@@ -43,12 +43,12 @@ def log(msg=""):
 # ---------- пути ----------
 
 class Paths:
-    def __init__(self, fooocus_dir, drive_base):
+    """Локальные папки Fooocus + каталог на Drive (пути Drive — в sud/paths.py)."""
+
+    def __init__(self, fooocus_dir, drive_base=None):
+        from sud import paths
         self.fooocus = fooocus_dir
-        self.drive_base = drive_base
-        self.links_file = os.path.join(drive_base, "LINKS", "links.txt")
-        self.drive_loras = drive_base
-        self.drive_embeddings = os.path.join(drive_base, "EMBEDDINGS")
+        self.links_file = paths.links_file()
         self.checkpoints = os.path.join(fooocus_dir, "models", "checkpoints")
         self.loras = os.path.join(fooocus_dir, "models", "loras")
         self.embeddings = os.path.join(fooocus_dir, "models", "embeddings")
@@ -94,10 +94,14 @@ def clean_broken_links(dst_dir):
     return removed
 
 
-def link_tree_from_drive(src_dir, dst_dir, exts, skip_dirs=None, keep_structure=True):
-    """Зеркалит дерево папок с Drive, подставляя симлинки на файлы."""
+def link_tree_from_drive(src_dir, dst_dir, exts, skip_dirs=None, keep_structure=True, overwrite=True, quiet_missing=False):
+    """Зеркалит дерево папок с Drive, подставляя симлинки на файлы.
+
+    overwrite=False — не перебивать уже существующие ссылки (для запасных старых папок).
+    """
     if not os.path.isdir(src_dir):
-        log(f"❌ Папка на Drive не найдена: {src_dir}")
+        if not quiet_missing:
+            log(f"❌ Папка на Drive не найдена: {src_dir}")
         return
 
     os.makedirs(dst_dir, exist_ok=True)
@@ -121,7 +125,7 @@ def link_tree_from_drive(src_dir, dst_dir, exts, skip_dirs=None, keep_structure=
             dst = os.path.join(target_dir, fname)
 
             if os.path.islink(dst):
-                if os.readlink(dst) == src:
+                if os.readlink(dst) == src or not overwrite:
                     skipped += 1
                     continue
                 os.unlink(dst)
@@ -259,14 +263,8 @@ def save_state(fooocus_dir, drive_base):
 
 
 def load_paths(fooocus_dir):
-    """Paths текущей сессии (drive_base берём из того, что записал sync)."""
-    drive_base = None
-    try:
-        with open(os.path.join(fooocus_dir, STATE_FILE), encoding="utf-8") as f:
-            drive_base = json.load(f).get("drive_base")
-    except Exception:
-        pass
-    return Paths(fooocus_dir, drive_base or "/content/drive/MyDrive/COLAB_MOUNTS/models/loras2")
+    """Paths текущей сессии (пути Drive — sud/paths.py)."""
+    return Paths(fooocus_dir)
 
 
 def add_link(links_file, section, url, new_name=None):
@@ -326,9 +324,11 @@ def download(paths, kind, url, new_name=None, token=None):
 
 # ---------- главное ----------
 
-def sync(fooocus_dir, drive_base, hf_token=None):
-    p = Paths(fooocus_dir, drive_base)
-    save_state(fooocus_dir, drive_base)
+def sync(fooocus_dir, drive_base=None, hf_token=None):
+    """drive_base — устаревший параметр (пути теперь в sud/paths.py), оставлен для старых ноутбуков."""
+    from sud import paths
+    paths.ensure_layout(log)
+    p = Paths(fooocus_dir)
 
     log(f"=== 1️⃣ СПИСОК: {p.links_file} ===")
     links = parse_links_file(p.links_file)
@@ -338,11 +338,19 @@ def sync(fooocus_dir, drive_base, hf_token=None):
     if not links:
         log("  ⚠️ Список пуст")
 
-    log("\n=== 2️⃣ ЛОРЫ С GOOGLE DRIVE ===")
-    link_tree_from_drive(p.drive_loras, p.loras, LORA_EXTS, skip_dirs=SKIP_DIRS, keep_structure=True)
-
-    log("\n=== 3️⃣ ЭМБЕДДИНГИ С GOOGLE DRIVE ===")
-    link_tree_from_drive(p.drive_embeddings, p.embeddings, EMBED_EXTS, keep_structure=False)
+    from sud import paths
+    for title, kind, dest, exts, keep in (
+        ("2️⃣ ЛОРЫ С GOOGLE DRIVE", "loras", p.loras, LORA_EXTS, True),
+        ("3️⃣ ЭМБЕДДИНГИ С GOOGLE DRIVE", "embeddings", p.embeddings, EMBED_EXTS, False),
+        ("➕ ЧЕКПОИНТЫ С GOOGLE DRIVE", "checkpoints", p.checkpoints, (".safetensors", ".ckpt"), True),
+        ("➕ WILDCARDS С GOOGLE DRIVE", "wildcards", p.wildcards, (".txt",), False),
+    ):
+        log(f"\n=== {title} ===")
+        for src, skip, main in paths.sources(kind):
+            if not os.path.isdir(src):
+                continue
+            log(f"   {'📁' if main else '🕰 старая папка:'} {src}")
+            link_tree_from_drive(src, dest, exts, skip_dirs=skip, keep_structure=keep, overwrite=main)
 
     log("\n=== 4️⃣ СКАЧИВАНИЕ С HUGGINGFACE ===")
     for section, dest, min_mb in [
