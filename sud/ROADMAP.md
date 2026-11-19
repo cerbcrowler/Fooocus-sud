@@ -30,7 +30,7 @@
       запуск без `--preset`, «Взять из текущих», сохранение с перезапуском и автообновлением страницы.
 - [x] Картинки сразу в папку на ноуте (`javascript/sud-autosave.js`, кнопка 📁), Fooocus с `--disable-image-log`.
 - [x] Темы gruvbox light/dark (`css/sud-gruvbox.css`, `javascript/sud-theme.js`), кнопка 🌙/☀️ внизу справа.
-- [x] Вкладка «📦 Менеджер» v1: скачать по ссылке HF, links.txt, таблица с поиском (`sud/ui_models.py`).
+- [x] Вкладка «📦 Менеджер» v1: скачать по ссылке HF, links.txt, таблица с поиском (`sud/ui_models.py`). Убрана 2026-11-20: всё это есть в полноэкранном менеджере.
       Дальше: Civitai, удаление, выбор лор по умолчанию, широкая таблица.
 - [x] Кэш venv на Drive (`COLAB_MOUNTS/cache/venv-fooocus-*.tar.zst`, 2,1 ГБ); восстановление в новой сессии ещё проверить.
 - [x] SSH в Colab через VPS: `ssh colab` (ProxyJump vps → 127.0.0.1:2222 → sshd Colab :2201),

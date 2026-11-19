@@ -377,9 +377,22 @@ body.sud-drag-active, body.sud-drag-active * { user-select: none !important; cur
 .sud-ar-hint { font-size: 12px; color: var(--body-text-color-subdued); margin-top: 6px; min-height: 15px; }
 .sud-ar-err { font-size: 12.5px; color: #cc241d; min-height: 15px; }
 
-/* ================= пресеты сэмплинга (javascript/sud-presets.js) ================= */
+/* ================= пресеты сэмплинга и LoRA (javascript/sud-presets.js) ================= */
+.sud-lora-card .sud-sp { margin: 2px 0 8px; }
 .sud-sp { margin-bottom: 12px; }
-.sud-sp-label { font-size: 12.5px; color: var(--body-text-color-subdued); margin-bottom: 6px; }
+.sud-sp-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; cursor: pointer; user-select: none; min-height: 20px; }
+.sud-sp.collapsed .sud-sp-head { margin-bottom: 0; }
+.sud-sp-label { font-size: 12.5px; color: var(--body-text-color-subdued); }
+.sud-sp-cur { font-size: 12.5px; color: var(--sud-accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.sud-sp-cur.none { color: var(--body-text-color-subdued); opacity: 0.7; }
+.sud-sp:not(.collapsed) .sud-sp-cur { display: none; }
+.sud-sp-dot { width: 7px; height: 7px; border-radius: 50%; background: #b57614; flex: none; }
+.dark .sud-sp-dot { background: #fabd2f; }
+.sud-sp:not(.collapsed) .sud-sp-dot { display: none; }
+.sud-sp-chev { margin-left: auto; display: inline-flex; color: var(--body-text-color-subdued); transition: transform 0.15s; transform: rotate(-90deg); }
+.sud-sp-chev.open { transform: none; }
+.sud-sp-chev .sud-ico { width: 15px; height: 15px; }
+.sud-sp-head:hover .sud-sp-label, .sud-sp-head:hover .sud-sp-chev { color: var(--body-text-color); }
 .sud-sp-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .sud-sp-chip {
   display: inline-flex; align-items: center; gap: 4px;
@@ -579,7 +592,8 @@ body.sud-drag-active, body.sud-drag-active * { user-select: none !important; cur
 .sud-compact-slider { padding: 2px 0 !important; column-gap: 8px !important; grid-template-columns: 70px minmax(0, 1fr) 44px !important; }
 .sud-card input[type=number] { height: 24px !important; font-size: 13px !important; }
 .sud-sp { margin-bottom: 6px !important; }
-.sud-sp-label { margin-bottom: 4px !important; }
+.sud-sp-head { margin-bottom: 4px !important; }
+.sud-sp.collapsed .sud-sp-head { margin-bottom: 0 !important; }
 .sud-sp-chip { padding: 3px 9px !important; font-size: 12.5px !important; }
 .sud-sp-note, .sud-sp-mod { margin-top: 5px !important; }
 

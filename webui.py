@@ -23,7 +23,6 @@ from modules.private_logger import get_current_html_path
 from modules.ui_gradio_extensions import reload_javascript
 from modules.auth import auth_enabled, check_auth
 from modules.util import is_json
-import sud.ui_models  # Fooocus-sud: вкладка «Менеджер»
 import sud.ui_settings  # Fooocus-sud: вкладка «Настройки»
 import sud.ui_cards  # Fooocus-sud: иконки и заголовки карточек
 import sud.ui_loras  # Fooocus-sud: удаление и перестановка лор
@@ -686,6 +685,7 @@ with shared.gradio_root:
                 with gr.Group(elem_classes=['sud-card', 'sud-lora-card']):
                     gr.HTML(sud.ui_cards.head('LoRA', 'stack', [('lora-alloff', 'power', 'Выключить все')],
                                               sub_class='sud-lora-count'))
+                    sud.ui_presets.container('loras')  # Fooocus-sud: пресеты наборов LoRA
                     lora_ctrls = []
 
                     for i, (enabled, filename, weight) in enumerate(modules.config.default_loras):
@@ -702,11 +702,12 @@ with shared.gradio_root:
                             lora_ctrls += [lora_enabled, lora_model, lora_weight]
                     gr.HTML(sud.ui_cards.add_button('Добавить LoRA'))
                     sud.ui_loras.wire(lora_ctrls)  # Fooocus-sud: удаление и перестановка лор
+                    sud.ui_presets.wire_loras(lora_ctrls)  # Fooocus-sud: пресеты наборов LoRA
                     gr.HTML(sud.ui_cards.flags_html(), elem_classes='sud-hidden-btn')  # Fooocus-sud: флаги для JS
 
                 with gr.Group(elem_classes=['sud-card', 'sud-sampling-card']):
                     gr.HTML(sud.ui_cards.head('Сэмплинг', 'sliders'))
-                    sud.ui_presets.container()  # Fooocus-sud: пресеты сэмплинга
+                    sud.ui_presets.container('sampling')  # Fooocus-sud: пресеты сэмплинга
                     with gr.Row(elem_classes='sud-pair'):
                         sampler_name = gr.Dropdown(label='Sampler', choices=flags.sampler_list,
                                                    value=modules.config.default_sampler, elem_id='sud-sampler')
@@ -722,9 +723,7 @@ with shared.gradio_root:
                     sharpness = gr.Slider(label='Резкость', minimum=0.0, maximum=30.0, step=0.001,
                                           value=modules.config.default_sample_sharpness, elem_classes='sud-compact-slider',
                                           elem_id='sud-sharpness')
-                    sud.ui_presets.wire(sampler_name, scheduler_name, guidance_scale, overwrite_step, sharpness)
-            with gr.Tab(label='\U0001F4E6 Менеджер'):  # Fooocus-sud
-                sud_manager = sud.ui_models.build()
+                    sud.ui_presets.wire_sampling(sampler_name, scheduler_name, guidance_scale, overwrite_step, sharpness)
             with gr.Tab(label='⚙️ Настройки'):  # Fooocus-sud
                 sud_settings = sud.ui_settings.build()
             with gr.Tab(label='Advanced'):  # CFG и резкость переехали в Models → Сэмплинг (Fooocus-sud)
@@ -915,8 +914,6 @@ with shared.gradio_root:
                     refresh_files_output += [preset_selection]
                 refresh_files.click(refresh_files_clicked, [], refresh_files_output + lora_ctrls,
                                     queue=False, show_progress=False)
-                sud.ui_models.wire_refresh(sud_manager, refresh_files_clicked,  # Fooocus-sud
-                                           refresh_files_output + lora_ctrls)
                 sud.ui_settings.wire_capture(sud_settings, dict(  # Fooocus-sud
                     base_model=base_model, lora_ctrls=lora_ctrls, performance=performance_selection,
                     sampler=sampler_name, scheduler=scheduler_name, cfg=guidance_scale, sharpness=sharpness,
