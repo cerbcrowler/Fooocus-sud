@@ -80,6 +80,7 @@
   --button-cancel-border-color: #9d0006;
   --button-cancel-text-color: #fbf1c7;
 
+  --slider-color: #d65d0e;
   --sud-progress: #d65d0e;
   --sud-progress-track: #ebdbb2;
   --sud-tooltip-bg: #f2e5bc;
@@ -133,6 +134,7 @@
   --button-cancel-border-color: #fb4934;
   --button-cancel-text-color: #fbf1c7;
 
+  --slider-color: #fe8019;
   --sud-progress: #fe8019;
   --sud-progress-track: #3c3836;
   --sud-tooltip-bg: #32302f;
@@ -154,11 +156,22 @@ progress::-moz-progress-bar { background-color: var(--sud-progress); }
   border-color: var(--sud-tooltip-border);
 }
 
-/* --- переключатель темы (кнопка справа сверху) --- */
+/* ползунки: у gradio "auto" = системный синий */
+input[type=range] { accent-color: var(--slider-color); }
+
+/* главная кнопка Generate — акцентная */
+#generate_button:not([disabled]) {
+  background: var(--button-primary-background-fill);
+  border-color: var(--button-primary-border-color);
+  color: var(--button-primary-text-color);
+}
+#generate_button:not([disabled]):hover { background: var(--button-primary-background-fill-hover); }
+
+/* --- переключатель темы (кнопка справа снизу, чтобы не закрывать вкладки) --- */
 #sud-theme-toggle {
   position: fixed;
-  top: 10px;
-  right: 12px;
+  bottom: 14px;
+  right: 14px;
   z-index: 1000;
   width: 36px;
   height: 36px;
