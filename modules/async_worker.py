@@ -188,6 +188,7 @@ def worker():
     import extras.preprocessors as preprocessors
     import modules.inpaint_worker as inpaint_worker
     import modules.constants as constants
+    import modules.tiled_upscale as tiled_upscale  # Fooocus-sud: Tiled Detail Upscale
     import extras.ip_adapter as ip_adapter
     import extras.face_crop
     import fooocus_version
@@ -279,12 +280,9 @@ def worker():
         async_task.results = async_task.results + [wall]
         return
 
-    def process_task(all_steps, async_task, callback, controlnet_canny_path, controlnet_cpds_path, current_task_id,
-                     denoising_strength, final_scheduler_name, goals, initial_latent, steps, switch, positive_cond,
-                     negative_cond, task, loras, tiled, use_expansion, width, height, base_progress, preparation_steps,
-                     total_count, show_intermediate_results, persist_image=True):
-        if async_task.last_stop is not False:
-            ldm_patched.modules.model_management.interrupt_current_processing()
+    def process_regular_diffusion(async_task, callback, controlnet_canny_path, controlnet_cpds_path,
+                                  denoising_strength, final_scheduler_name, goals, initial_latent, steps, switch,
+                                  positive_cond, negative_cond, task, tiled, width, height):
         if 'cn' in goals:
             for cn_flag, cn_path in [
                 (flags.cn_canny, controlnet_canny_path),
@@ -294,7 +292,7 @@ def worker():
                     positive_cond, negative_cond = core.apply_controlnet(
                         positive_cond, negative_cond,
                         pipeline.loaded_ControlNets[cn_path], cn_img, cn_weight, 0, cn_stop)
-        imgs = pipeline.process_diffusion(
+        return pipeline.process_diffusion(
             positive_cond=positive_cond,
             negative_cond=negative_cond,
             steps=steps,
@@ -312,6 +310,90 @@ def worker():
             refiner_swap_method=async_task.refiner_swap_method,
             disable_preview=async_task.disable_preview
         )
+
+    def process_tiled_detail_upscale(all_steps, async_task, base_progress, current_task_id, denoising_strength,
+                                     final_scheduler_name, initial_latent, steps, switch, positive_cond,
+                                     negative_cond, task, preparation_steps, total_count):
+        """Fooocus-sud: Tiled Detail Upscale 2.0 (идея и математика — micha42-dot/Fooocus_Advanced)."""
+        T = tiled_upscale
+        image = initial_latent[T.TILED_DETAIL_LATENT_KEY]
+        image_height, image_width = image.shape[:2]
+        y_positions = T.get_tile_positions(image_height, T.DEFAULT_TILE_SIZE, T.DEFAULT_TILE_OVERLAP)
+        x_positions = T.get_tile_positions(image_width, T.DEFAULT_TILE_SIZE, T.DEFAULT_TILE_OVERLAP)
+        tile_positions = [(y, x) for y in y_positions for x in x_positions]
+        total_tiles = len(tile_positions)
+        print(f'[Tiled Detail Upscale {T.TILED_DETAIL_VERSION}] {total_tiles} плиток по {T.DEFAULT_TILE_SIZE}px, '
+              f'перекрытие {T.DEFAULT_TILE_OVERLAP}px')
+
+        accumulator = np.zeros((image_height, image_width, 3), dtype=np.float32)
+        weights = np.zeros((image_height, image_width, 1), dtype=np.float32)
+        # весь апскейл этой картинки укладываем в её обычную долю прогресса (steps шагов)
+        span = (100 - preparation_steps) / float(all_steps) * steps
+        candidate_vae, _ = pipeline.get_candidate_vae(steps=steps, switch=switch, denoise=denoising_strength,
+                                                      refiner_swap_method=async_task.refiner_swap_method)
+
+        for index, (y, x) in enumerate(tile_positions):
+            if async_task.last_stop is not False:
+                ldm_patched.modules.model_management.interrupt_current_processing()
+            tile, tile_height, tile_width = T.get_padded_tile(image, y, x, T.DEFAULT_TILE_SIZE)
+            label = f'Tiled detail: плитка {index + 1}/{total_tiles}, картинка {current_task_id + 1}/{total_count}'
+            progressbar(async_task, int(base_progress + span * index / total_tiles), label + ' ...')
+
+            def tile_callback(step, x0, latent_x, total_steps, preview, _index=index):
+                done = (_index + (step + 1) / max(1, total_steps)) / total_tiles
+                async_task.yields.append(['preview', (int(base_progress + span * done),
+                                                      f'{label}, шаг {step + 1}/{total_steps} ...', preview)])
+
+            pixels = torch.from_numpy(tile[None]).float().div_(255.0)
+            tile_latent = core.encode_vae(vae=candidate_vae, pixels=pixels)
+            result = pipeline.process_diffusion(
+                positive_cond=positive_cond,
+                negative_cond=negative_cond,
+                steps=steps,
+                switch=switch,
+                width=T.DEFAULT_TILE_SIZE,
+                height=T.DEFAULT_TILE_SIZE,
+                image_seed=T.get_tile_seed(task['task_seed'], y, x, constants.MAX_SEED),
+                callback=tile_callback,
+                sampler_name=async_task.sampler_name,
+                scheduler_name=final_scheduler_name,
+                latent=tile_latent,
+                denoise=denoising_strength,
+                tiled=False,
+                cfg_scale=async_task.cfg_scale,
+                refiner_swap_method=async_task.refiner_swap_method,
+                disable_preview=async_task.disable_preview
+            )[0]
+            result = T.anchor_tile_low_frequency(result, tile)[:tile_height, :tile_width]
+            mask = T.make_blend_mask(tile_height=tile_height, tile_width=tile_width, y=y, x=x,
+                                     image_height=image_height, image_width=image_width,
+                                     overlap=T.DEFAULT_TILE_OVERLAP, y_positions=y_positions,
+                                     x_positions=x_positions, confidence_power=T.BLEND_CONFIDENCE_POWER)[:, :, None]
+            accumulator[y:y + tile_height, x:x + tile_width] += result * mask
+            weights[y:y + tile_height, x:x + tile_width] += mask
+            del pixels, tile_latent, result
+
+        out = np.clip(accumulator / np.maximum(weights, 1e-6), 0, 255).astype(np.uint8)
+        return [out]
+
+    def process_task(all_steps, async_task, callback, controlnet_canny_path, controlnet_cpds_path, current_task_id,
+                     denoising_strength, final_scheduler_name, goals, initial_latent, steps, switch, positive_cond,
+                     negative_cond, task, loras, tiled, use_expansion, width, height, base_progress, preparation_steps,
+                     total_count, show_intermediate_results, persist_image=True):
+        if async_task.last_stop is not False:
+            ldm_patched.modules.model_management.interrupt_current_processing()
+        if isinstance(initial_latent, dict) and tiled_upscale.TILED_DETAIL_LATENT_KEY in initial_latent:
+            # Fooocus-sud: Tiled Detail Upscale — каждая плитка 1024 отдельно, потом плавная склейка
+            if 'cn' in goals:
+                print('[Tiled Detail Upscale] Image Prompt/ControlNet для плиток не используется')
+            imgs = process_tiled_detail_upscale(all_steps, async_task, base_progress, current_task_id,
+                                                denoising_strength, final_scheduler_name, initial_latent, steps,
+                                                switch, positive_cond, negative_cond, task, preparation_steps,
+                                                total_count)
+        else:
+            imgs = process_regular_diffusion(async_task, callback, controlnet_canny_path, controlnet_cpds_path,
+                                             denoising_strength, final_scheduler_name, goals, initial_latent, steps,
+                                             switch, positive_cond, negative_cond, task, tiled, width, height)
         del positive_cond, negative_cond  # Save memory
         if inpaint_worker.current_task is not None:
             imgs = [inpaint_worker.current_task.post_process(x) for x in imgs]
@@ -593,9 +675,10 @@ def worker():
         else:
             uov_input_image = resample_image(uov_input_image, width=W * f, height=H * f)
         image_is_super_large = shape_ceil > 2800
+        use_tiled_detail = tiled_upscale.is_tiled_detail_upscale(uov_method)  # Fooocus-sud
         if 'fast' in uov_method:
             direct_return = True
-        elif image_is_super_large:
+        elif image_is_super_large and not use_tiled_detail:
             print('Image is too large. Directly returned the SR image. '
                   'Usually directly return SR image at 4K resolution '
                   'yields better results than SDXL diffusion.')
@@ -606,9 +689,17 @@ def worker():
             return direct_return, uov_input_image, None, None, None, None, None, current_progress
 
         tiled = True
-        denoising_strength = 0.382
+        denoising_strength = 0.28 if use_tiled_detail else 0.382
         if async_task.overwrite_upscale_strength > 0:
             denoising_strength = async_task.overwrite_upscale_strength
+        if use_tiled_detail:
+            # Fooocus-sud: Tiled Detail — плитки кодируются по одной в process_tiled_detail_upscale
+            height, width = uov_input_image.shape[:2]
+            n = tiled_upscale.get_tiled_detail_tile_count(height, width)
+            print(f'[Tiled Detail Upscale {tiled_upscale.TILED_DETAIL_VERSION}] Итог {width}x{height}, плиток: {n}, '
+                  f'denoise {denoising_strength}')
+            return direct_return, uov_input_image, denoising_strength, {
+                tiled_upscale.TILED_DETAIL_LATENT_KEY: uov_input_image}, tiled, width, height, current_progress
         initial_pixels = core.numpy_to_pytorch(uov_input_image)
         if advance_progress:
             current_progress += 1
