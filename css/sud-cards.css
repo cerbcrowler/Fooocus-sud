@@ -252,3 +252,45 @@
 .sud-compact-slider label span { font-size: 13px !important; color: var(--body-text-color-subdued) !important; margin: 0 !important; white-space: nowrap; }
 .sud-compact-slider input[type=range] { grid-column: 2; grid-row: 1; }
 .sud-compact-slider input[type=number] { grid-column: 3; grid-row: 1; width: 100% !important; text-align: right; }
+
+/* ---------- ручка перетаскивания и крестик в строке LoRA ---------- */
+.sud-lora-row { grid-template-columns: 16px 34px minmax(0, 1fr) 56px 26px !important; column-gap: 8px !important; }
+.sud-lora-row > .sud-grip { grid-column: 1; grid-row: 1; }
+.sud-lora-row > .sud-toggle { grid-column: 2 !important; }
+.sud-lora-row > .sud-lora-name { grid-column: 3 !important; }
+.sud-lora-row > .sud-lora-weight { grid-column: 3 / 5 !important; }
+.sud-lora-row > .sud-lora-del { grid-column: 5; grid-row: 1; }
+.sud-lora-weight input[type=number] { right: 34px !important; }
+
+.sud-grip {
+  display: flex; align-items: center; justify-content: center;
+  height: 28px;
+  color: var(--body-text-color-subdued);
+  opacity: 0.35;
+  cursor: grab;
+  transition: opacity 0.15s;
+}
+.sud-grip .sud-ico { width: 16px; height: 16px; }
+.sud-lora-row:hover .sud-grip { opacity: 0.85; }
+.sud-lora-del {
+  width: 26px; height: 26px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  border: none; border-radius: 7px;
+  background: transparent;
+  color: var(--body-text-color-subdued);
+  opacity: 0.35;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s;
+}
+.sud-lora-del .sud-ico { width: 15px; height: 15px; }
+.sud-lora-row:hover .sud-lora-del { opacity: 0.8; }
+.sud-lora-del:hover { opacity: 1 !important; background: var(--background-fill-secondary); color: #cc241d; }
+
+.sud-lora-row.sud-dragging { opacity: 0.4; }
+.sud-lora-row.sud-drop-before { box-shadow: inset 0 2px 0 var(--sud-accent) !important; }
+.sud-lora-row.sud-drop-after { box-shadow: inset 0 -2px 0 var(--sud-accent) !important; }
+
+/* во время перетаскивания — без выделения текста, курсор «тащу» */
+body.sud-drag-active, body.sud-drag-active * { user-select: none !important; cursor: grabbing !important; }
+.sud-grip { touch-action: none; }
+.sud-lora-row.sud-dragging { opacity: 0.45; }

@@ -18,6 +18,10 @@ _PATHS = {
                    '<path d="M16 7a2 2 0 1 0 4 0a2 2 0 0 0 -4 0"/><path d="M18 4v1"/><path d="M18 9v11"/>',
     "power": '<path d="M7 6a7.75 7.75 0 1 0 10 0"/><path d="M12 4l0 8"/>',
     "plus": '<path d="M12 5l0 14"/><path d="M5 12l14 0"/>',
+    "x": '<path d="M18 6l-12 12"/><path d="M6 6l12 12"/>',
+    "grip": '<path d="M9 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M9 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/>'
+            '<path d="M9 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M15 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/>'
+            '<path d="M15 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M15 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/>',
 }
 
 
@@ -33,6 +37,14 @@ def head(title, ico, buttons=(), sub_class=None):
                    for a, i, t in buttons)
     return (f'<div class="sud-head">{icon(ico)}<span class="sud-head-title">{title}</span>{sub}'
             f'<div class="sud-head-btns">{btns}</div></div>')
+
+
+def flags_html():
+    """Скрытый блок с флагами из настроек для JS (например, спрятать вкладку Styles)."""
+    from sud import settings
+    cfg = settings.effective()
+    hide_styles = "1" if cfg.get("sud_hide_styles_tab") else "0"
+    return f'<div id="sud-flags" data-hide-styles="{hide_styles}"></div>'
 
 
 def add_button(text):

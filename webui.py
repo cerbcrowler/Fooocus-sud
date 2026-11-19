@@ -26,6 +26,7 @@ from modules.util import is_json
 import sud.ui_models  # Fooocus-sud: вкладка «Менеджер»
 import sud.ui_settings  # Fooocus-sud: вкладка «Настройки»
 import sud.ui_cards  # Fooocus-sud: иконки и заголовки карточек
+import sud.ui_loras  # Fooocus-sud: удаление и перестановка лор
 
 def get_task(*args):
     args = list(args)
@@ -656,11 +657,11 @@ with shared.gradio_root:
 
             with gr.Tab(label='Models'):  # Fooocus-sud: карточки «Модель / LoRA / Сэмплинг»
                 with gr.Group(elem_classes=['sud-card', 'sud-model-card']):
-                    gr.HTML(sud.ui_cards.head('Модель', 'box', [('refiner', 'adjustments', 'Refiner'),
-                                                                 ('refresh', 'refresh', 'Обновить списки файлов')]))
+                    gr.HTML(sud.ui_cards.head('Модель', 'box', [('refresh', 'refresh', 'Обновить списки файлов')]))
                     refresh_files = gr.Button(value='Refresh', elem_classes=['sud-hidden-btn', 'refresh_button'])
                     base_model = gr.Dropdown(label='Base Model (SDXL only)', choices=modules.config.model_filenames, value=modules.config.default_base_model_name, show_label=False, container=False, elem_classes='sud-model-select')
-                    with gr.Accordion('Refiner', open=modules.config.default_refiner_model_name != 'None', elem_classes='sud-refiner'):
+                    # Fooocus-sud: Refiner в интерфейсе не нужен — элементы остаются (для пресетов/метаданных), но скрыты
+                    with gr.Column(visible=False, elem_classes='sud-refiner'):
                         refiner_model = gr.Dropdown(label='Refiner (SDXL or SD 1.5)', choices=['None'] + modules.config.model_filenames, value=modules.config.default_refiner_model_name, show_label=True)
                         refiner_switch = gr.Slider(label='Refiner Switch At', minimum=0.1, maximum=1.0, step=0.0001,
                                                    info='Use 0.4 for SD1.5 realistic models; '
@@ -691,6 +692,8 @@ with shared.gradio_root:
                                                     elem_classes=['lora_weight', 'sud-lora-weight'], scale=5)
                             lora_ctrls += [lora_enabled, lora_model, lora_weight]
                     gr.HTML(sud.ui_cards.add_button('Добавить LoRA'))
+                    sud.ui_loras.wire(lora_ctrls)  # Fooocus-sud: удаление и перестановка лор
+                    gr.HTML(sud.ui_cards.flags_html(), elem_classes='sud-hidden-btn')  # Fooocus-sud: флаги для JS
 
                 with gr.Group(elem_classes=['sud-card', 'sud-sampling-card']):
                     gr.HTML(sud.ui_cards.head('Сэмплинг', 'sliders'))

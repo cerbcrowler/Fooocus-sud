@@ -120,6 +120,8 @@ def build():
             value=ratios_to_text(cfg.get("available_aspect_ratios") or C.available_aspect_ratios))
         f["default_advanced_checkbox"] = gr.Checkbox(label="Панель Advanced открыта при запуске",
                                                      value=cfg.get("default_advanced_checkbox", True))
+        f["sud_hide_styles_tab"] = gr.Checkbox(label="Скрыть вкладку Styles (стили по умолчанию продолжат работать)",
+                                               value=bool(cfg.get("sud_hide_styles_tab", False)))
 
     with gr.Accordion("Значения по умолчанию", open=True):
         capture_btn = gr.Button("📥 Взять из текущих настроек интерфейса", variant="secondary")
