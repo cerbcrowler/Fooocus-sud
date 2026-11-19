@@ -3,7 +3,6 @@
 Движок в Colab, интерфейс в браузере ноута через `https://colab.period.pp.ua`.
 
 ## Интерфейс
-- [ ] **Темы gruvbox light / dark** с переключателем в интерфейсе.
 - [ ] **Вкладка «Модели»**: вставить ссылку HF/Civitai → скачать с прогрессом → модель сразу в списке;
       галочка «оставить в links.txt»; удаление/выключение; выбор модели по умолчанию.
       Использует тот же `sud/models.py`, что и ноутбук.
@@ -15,6 +14,9 @@
 - [ ] Ускорить загрузку с HF через `hf_transfer`.
 
 ## Сделано
+- [x] Темы gruvbox light/dark (`css/sud-gruvbox.css`, `javascript/sud-theme.js`), кнопка 🌙/☀️ внизу справа.
+- [x] Вкладка «📦 Менеджер» v1: скачать по ссылке HF, links.txt, таблица с поиском (`sud/ui_models.py`).
+      Дальше: Civitai, удаление, выбор лор по умолчанию, широкая таблица.
 - [x] Кэш venv на Drive (`COLAB_MOUNTS/cache/venv-fooocus-*.tar.zst`, 2,1 ГБ); восстановление в новой сессии ещё проверить.
 - [x] SSH в Colab через VPS: `ssh colab` (ProxyJump vps → 127.0.0.1:2222 → sshd Colab :2201),
       лог `/content/fooocus.log`, перезапуск `/content/restart_fooocus.sh`.
