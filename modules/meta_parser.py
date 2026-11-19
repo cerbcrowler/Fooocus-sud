@@ -1,4 +1,5 @@
 import json
+import os
 import re
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -323,6 +324,10 @@ class MetadataParser(ABC):
         for (lora_name, lora_weight) in loras:
             if lora_name != 'None':
                 lora_path = get_file_from_folder_list(lora_name, modules.config.paths_loras)
+                if not os.path.isfile(lora_path):
+                    # Fooocus-sud: лоры нет на диске (уже предупредили «Lora file not found») —
+                    # не роняем сохранение картинки из-за хеша для метаданных
+                    continue
                 lora_hash = sha256_from_cache(lora_path)
                 self.loras.append((Path(lora_name).stem, lora_weight, lora_hash))
         self.vae_name = Path(vae_name).stem

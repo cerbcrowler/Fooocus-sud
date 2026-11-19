@@ -382,7 +382,8 @@ def get_file_from_folder_list(name, folders):
 
 
 def get_enabled_loras(loras: list, remove_none=True) -> list:
-    return [(lora[1], lora[2]) for lora in loras if lora[0] and (lora[1] != 'None' if remove_none else True)]
+    # Fooocus-sud: пустое имя (стёртое поле выбора) — то же, что 'None'
+    return [(lora[1], lora[2]) for lora in loras if lora[0] and (lora[1] not in ('None', '') if remove_none else True)]
 
 
 def parse_lora_references_from_prompt(prompt: str, loras: List[Tuple[AnyStr, float]], loras_limit: int = 5,

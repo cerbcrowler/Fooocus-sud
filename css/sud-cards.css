@@ -1,229 +1,254 @@
 /* Fooocus-sud: компактные карточки (вкладка Models: Модель / LoRA / Сэмплинг).
- * Разметку делает webui.py (elem_classes sud-*), поведение — javascript/sud-loras.js.
- * Цвета берутся из переменных темы (css/sud-gruvbox.css), поэтому работает в обеих темах.
+ * Разметка — webui.py (elem_classes sud-*) + sud/ui_cards.py (заголовки, иконки),
+ * поведение — javascript/sud-loras.js. Цвета — из переменных темы gruvbox.
  */
+
+:root {
+  --sud-accent: #458588;          /* gruvbox blue */
+  --sud-track: #e2d6b0;
+  --sud-line: #e6d9b3;
+  --sud-field: #fbf6dd;
+  --sud-toggle-off: #c9bb98;
+}
+.dark {
+  --sud-accent: #83a598;
+  --sud-track: #45403d;
+  --sud-line: #3c3836;
+  --sud-field: #2c2a29;
+  --sud-toggle-off: #5a524c;
+}
 
 /* ---------- карточка ---------- */
 .sud-card {
-  border: 1px solid var(--border-color-primary) !important;
-  border-radius: 12px !important;
+  border: 1px solid var(--sud-line) !important;
+  border-radius: 14px !important;
   background: var(--block-background-fill) !important;
-  overflow: hidden;
-  margin-bottom: 10px !important;
+  padding: 14px 16px 12px !important;
+  margin: 0 0 12px !important;
+  gap: 0 !important;
+  overflow: visible !important;
+  box-shadow: none !important;
+}
+.sud-card .styler, .sud-card > div, .sud-card .form, .sud-card .block, .sud-card .row {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
   gap: 0 !important;
 }
-.sud-card > * { border: none !important; box-shadow: none !important; }
-.sud-card .block.padded { padding: 6px 10px !important; }
+.sud-card .block, .sud-card .block.padded { padding: 0 !important; }
+.sud-card .prose { font-size: inherit !important; }
+.sud-hidden-btn { display: none !important; }
 
-.sud-card-head, .sud-card-head-html {
-  display: flex !important;
-  flex-wrap: nowrap !important;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px 4px !important;
-  min-height: 0 !important;
-}
-.sud-card-head > .block { padding: 0 !important; flex: 1 1 0 !important; min-width: 0 !important; width: auto !important; }
-.sud-card-head > button { margin-left: auto; }
-/* внутренние блоки карточки без собственной заливки */
-.sud-card .block, .sud-pair { background: transparent !important; }
-.sud-card-head-html { padding: 0 !important; }
-.sud-card .prose:has(.sud-card-head-html) { width: 100%; }
-.sud-card-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--body-text-color);
-  white-space: nowrap;
-}
-.sud-icon-btn {
-  flex: 0 0 auto !important;
-  width: 30px !important;
-  min-width: 30px !important;
-  height: 30px !important;
-  padding: 0 !important;
-  border-radius: 8px !important;
-  font-size: 14px !important;
-  line-height: 1 !important;
-  border: 1px solid var(--border-color-primary) !important;
-  background: var(--background-fill-secondary) !important;
-  color: var(--body-text-color-subdued) !important;
+/* заголовок: иконка, название, подпись, кнопки-иконки справа */
+.sud-head { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; }
+.sud-ico { width: 17px; height: 17px; flex: 0 0 auto; }
+.sud-head > .sud-ico { color: var(--body-text-color-subdued); }
+.sud-head-title { font-size: 15px; font-weight: 600; color: var(--body-text-color); }
+.sud-head-sub { font-size: 13px; color: var(--body-text-color-subdued); }
+.sud-head-btns { margin-left: auto; display: flex; gap: 6px; }
+.sud-ibtn {
+  width: 30px; height: 30px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--sud-line);
+  background: transparent;
+  color: var(--body-text-color-subdued);
   cursor: pointer;
-  margin-left: auto;
 }
-.sud-icon-btn:hover { color: var(--body-text-color) !important; background: var(--button-secondary-background-fill-hover) !important; }
+.sud-ibtn:hover { background: var(--background-fill-secondary); color: var(--body-text-color); }
+.sud-ibtn.active { color: var(--sud-accent); border-color: var(--sud-accent); }
+.sud-ibtn .sud-ico { width: 16px; height: 16px; }
+.sud-ibtn.spin .sud-ico { animation: sud-spin 0.7s linear; }
+@keyframes sud-spin { to { transform: rotate(360deg); } }
+
+/* ---------- поля выбора (dropdown) ---------- */
+.sud-card .wrap:has(> .wrap-inner) {
+  border: 1px solid var(--sud-line) !important;
+  border-radius: 9px !important;
+  background: var(--sud-field) !important;
+  box-shadow: none !important;
+  min-height: 38px;
+}
+.sud-card .wrap:has(> .wrap-inner):hover { border-color: var(--border-color-primary) !important; }
+.sud-card .wrap:has(> .wrap-inner):focus-within { border-color: var(--sud-accent) !important; }
+.sud-card .secondary-wrap input { font-size: 14px !important; }
+.sud-card .secondary-wrap svg { opacity: 0.55; }
+.sud-card label > span:not(.sr-only) {
+  font-size: 12.5px !important;
+  color: var(--body-text-color-subdued) !important;
+  margin-bottom: 5px !important;
+}
+
+/* списки поверх соседних карточек, с рамкой */
+.sud-card:focus-within { z-index: 30; position: relative; }
+.sud-card ul.options {
+  z-index: 1000 !important;
+  border: 1px solid var(--border-color-primary) !important;
+  border-radius: 9px !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25) !important;
+  background: var(--background-fill-secondary) !important;
+}
+
+/* ---------- ползунки: тонкая полоса с заливкой (--p ставит sud-loras.js) ---------- */
+.sud-card input[type=range] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px !important;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--sud-accent) 0 var(--p, 50%), var(--sud-track) var(--p, 50%) 100%) !important;
+  margin: 0 !important;
+  cursor: pointer;
+  outline: none;
+}
+.sud-card input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--block-background-fill);
+  border: 2px solid var(--sud-accent);
+  transition: transform 0.12s ease;
+}
+.sud-card input[type=range]::-moz-range-thumb {
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--block-background-fill);
+  border: 2px solid var(--sud-accent);
+}
+.sud-card input[type=range]:hover::-webkit-slider-thumb { transform: scale(1.2); }
+
+/* числа: без коробки, рамка только при наведении/вводе */
+.sud-card input[type=number] {
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 7px !important;
+  font-size: 14px !important;
+  color: var(--body-text-color) !important;
+  padding: 0 4px !important;
+  height: 28px;
+  -moz-appearance: textfield;
+}
+.sud-card input[type=number]::-webkit-inner-spin-button { display: none; }
+.sud-card input[type=number]:hover { border-color: var(--sud-line) !important; }
+.sud-card input[type=number]:focus { border-color: var(--sud-accent) !important; background: var(--sud-field) !important; }
 
 /* ---------- Модель ---------- */
-.sud-model-select { padding: 4px 10px 8px !important; }
-.sud-refiner { border-top: 1px solid var(--border-color-primary) !important; border-radius: 0 !important; }
-.sud-refiner > .label-wrap { font-size: 12px; color: var(--body-text-color-subdued); }
+.sud-refiner { margin-top: 10px !important; padding: 0 !important; border: none !important; }
+.sud-refiner > .label-wrap { display: none !important; }
 
 /* ---------- LoRA ---------- */
-.sud-lora-count {
-  font-size: 12px;
-  color: var(--body-text-color-subdued);
-  margin-left: 2px;
-}
 .sud-lora-row {
   display: grid !important;
-  grid-template-columns: 38px minmax(0, 1fr) 62px;
+  grid-template-columns: 34px minmax(0, 1fr) 56px;
   grid-template-rows: auto auto;
-  column-gap: 6px;
-  row-gap: 0;
+  column-gap: 12px;
+  row-gap: 8px;
   align-items: center;
-  padding: 6px 10px 4px !important;
-  border-top: 1px solid var(--border-color-primary) !important;
+  padding: 11px 0 12px !important;
+  border-top: 1px solid var(--sud-line) !important;
   position: relative;
   flex-wrap: nowrap !important;
 }
-.sud-lora-row > * { min-width: 0 !important; width: auto !important; padding: 0 !important; }
+.sud-lora-row > * { min-width: 0 !important; width: auto !important; padding: 0 !important; flex: none !important; }
 .sud-lora-row.sud-empty:not(.sud-revealed) { display: none !important; }
-.sud-lora-row.sud-off .sud-lora-label { opacity: 0.55; }
-
-.sud-lora-row > .sud-toggle { grid-column: 1; grid-row: 1 / span 2; align-self: center; }
+.sud-lora-row.sud-off .sud-lora-label { opacity: 0.5; }
+.sud-lora-row.sud-off input[type=range] { filter: grayscale(1); opacity: 0.5; }
+.sud-lora-row > .sud-toggle { grid-column: 1; grid-row: 1; }
 .sud-lora-row > .sud-lora-name { grid-column: 2; grid-row: 1; }
 .sud-lora-row > .sud-lora-weight { grid-column: 2 / 4; grid-row: 2; position: static !important; }
 
-/* переключатель вместо галочки */
+/* переключатель */
 .sud-toggle label { gap: 0 !important; padding: 0 !important; background: none !important; border: none !important; box-shadow: none !important; }
 .sud-toggle label > span { display: none !important; }
 .sud-toggle input[type=checkbox] {
-  appearance: none;
-  -webkit-appearance: none;
-  width: 32px !important;
-  height: 18px !important;
-  border-radius: 9px !important;
+  appearance: none; -webkit-appearance: none;
+  width: 34px !important; height: 20px !important;
+  border-radius: 10px !important;
   border: none !important;
-  background: var(--border-color-primary) !important;
+  background: var(--sud-toggle-off) !important;
   background-image: none !important;
-  position: relative;
-  cursor: pointer;
+  position: relative; cursor: pointer; margin: 0 !important;
   transition: background 0.15s ease;
-  margin: 0 !important;
+  box-shadow: none !important;
 }
 .sud-toggle input[type=checkbox]::after {
-  content: "";
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--background-fill-primary);
+  content: ""; position: absolute; top: 3px; left: 3px;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: #fbf1c7;
   transition: left 0.15s ease;
 }
-.sud-toggle input[type=checkbox]:checked { background: var(--button-primary-background-fill) !important; }
-.sud-toggle input[type=checkbox]:checked::after { left: 16px; }
+.sud-toggle input[type=checkbox]:checked { background: var(--sud-accent) !important; }
+.sud-toggle input[type=checkbox]:checked::after { left: 17px; }
 
-/* имя лоры: папка мелко сверху, имя в 2 строки; при вводе — обычное поле поиска */
-.sud-lora-name .wrap { position: relative; border-radius: 8px !important; }
-.sud-lora-name .wrap.sud-has-label .wrap-inner { min-height: 46px; }
+/* имя лоры — просто текст (имя, ниже папка); при клике — обычный поиск */
+.sud-lora-name .wrap:has(> .wrap-inner) {
+  border-color: transparent !important;
+  background: transparent !important;
+  min-height: 40px;
+  position: relative;
+}
+.sud-lora-name .wrap:has(> .wrap-inner):hover { background: var(--sud-field) !important; border-color: var(--sud-line) !important; }
+.sud-lora-name:focus-within .wrap:has(> .wrap-inner) { background: var(--sud-field) !important; border-color: var(--sud-accent) !important; }
+.sud-lora-name .secondary-wrap svg { opacity: 0; transition: opacity 0.15s; }
+.sud-lora-name:hover .secondary-wrap svg, .sud-lora-name:focus-within .secondary-wrap svg { opacity: 0.55; }
 .sud-lora-label {
-  position: absolute;
-  inset: 0 26px 0 0;
-  z-index: 1;
+  /* подпись в потоке: высота строки растёт под длинное имя */
+  display: flex; flex-direction: column; justify-content: center;
+  min-height: 38px;
+  padding: 3px 26px 3px 8px;
   pointer-events: none;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 2px 4px 2px 10px;
-  line-height: 1.2;
-  font-size: 13px;
+  line-height: 1.25;
+  font-size: 14px;
   color: var(--body-text-color);
   word-break: break-all;
-  overflow: hidden;
 }
-.sud-lora-label small {
-  display: block;
-  font-size: 10.5px;
-  color: var(--body-text-color-subdued);
-  letter-spacing: 0.02em;
-}
-.sud-lora-name:not(:focus-within) .sud-has-label input {
-  color: transparent !important;
-  caret-color: transparent;
-  cursor: pointer;
-}
+.sud-lora-label small { font-size: 12px; color: var(--body-text-color-subdued); margin-top: 1px; }
+.sud-lora-label.sud-placeholder { color: var(--body-text-color-subdued); }
+/* пока поле не в фокусе — невидимый ввод растянут поверх подписи (клик открывает список) */
+.sud-lora-name:not(:focus-within) .wrap:has(> .sud-lora-label) > .wrap-inner { position: absolute; inset: 0; z-index: 1; }
+.sud-lora-name:not(:focus-within) .wrap:has(> .sud-lora-label) .secondary-wrap { height: 100%; }
+.sud-lora-name:not(:focus-within) .sud-has-label input { color: transparent !important; caret-color: transparent; cursor: pointer; height: 100%; }
 .sud-lora-name:focus-within .sud-lora-label { display: none; }
 
-/* вес: число справа от имени, ползунок тонкой полосой под строкой */
+/* вес: число справа от имени, полоса под строкой */
 .sud-lora-weight .wrap { position: static !important; }
 .sud-lora-weight .head label { display: none !important; }
 .sud-lora-weight input[type=number] {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 58px !important;
-  height: 30px;
+  position: absolute; top: 17px; right: 0;
+  width: 56px !important;
   text-align: center;
-  font-size: 13px !important;
-  border-radius: 8px !important;
-  padding: 0 4px !important;
+  border-color: var(--sud-line) !important;
 }
-.sud-lora-weight input[type=range] { height: 14px; margin: 2px 0 0 !important; }
+.sud-lora-weight input[type=range] { width: 100%; }
 
 .sud-lora-add {
-  display: block;
+  display: flex; align-items: center; gap: 8px;
   width: 100%;
-  padding: 8px 12px;
+  padding: 12px 2px 2px;
   border: none;
-  border-top: 1px solid var(--border-color-primary);
+  border-top: 1px solid var(--sud-line);
   background: transparent;
-  color: var(--button-primary-background-fill);
-  font-size: 13px;
-  text-align: left;
+  color: var(--sud-accent);
+  font-size: 14px;
   cursor: pointer;
 }
-.sud-lora-add:hover { background: var(--background-fill-secondary); }
+.sud-lora-add .sud-ico { width: 16px; height: 16px; }
+.sud-lora-add:hover { opacity: 0.8; }
 .sud-lora-add[disabled] { color: var(--body-text-color-subdued); cursor: default; }
-.sud-lora-card .block:has(.sud-lora-add) { padding: 0 !important; }
 
 /* ---------- Сэмплинг ---------- */
-.sud-pair { gap: 8px !important; padding: 0 10px !important; }
-.sud-pair > .block { padding: 4px 0 !important; }
+.sud-pair { display: block !important; margin-bottom: 10px; }
+.sud-pair > .form { display: grid !important; grid-template-columns: 1fr 1fr; column-gap: 10px !important; width: 100% !important; min-width: 0 !important; }
+.sud-pair .block { min-width: 0 !important; }
 
-/* компактный ползунок: «название | полоса | число» в одну строку */
 .sud-compact-slider {
   display: grid !important;
-  grid-template-columns: 96px minmax(0, 1fr) 62px;
+  grid-template-columns: 82px minmax(0, 1fr) 48px;
   align-items: center;
-  column-gap: 10px;
-  padding: 4px 10px !important;
+  column-gap: 12px;
+  padding: 5px 0 !important;
 }
 .sud-compact-slider > .wrap:not(.hide):not(.full),
 .sud-compact-slider > .wrap > .head { display: contents !important; }
 .sud-compact-slider label { grid-column: 1; grid-row: 1; margin: 0 !important; }
-.sud-compact-slider label span { font-size: 12px !important; color: var(--body-text-color-subdued) !important; margin: 0 !important; }
-.sud-compact-slider input[type=range] { grid-column: 2; grid-row: 1; margin: 0 !important; }
-.sud-compact-slider input[type=number] {
-  grid-column: 3;
-  grid-row: 1;
-  width: 100% !important;
-  height: 28px;
-  text-align: center;
-  font-size: 13px !important;
-  border-radius: 8px !important;
-}
-
-/* выпадающие списки внутри карточек — поверх соседних карточек, с рамкой */
-.sud-card { overflow: visible !important; }
-.sud-card:focus-within { z-index: 30; position: relative; }
-.sud-lora-row:focus-within, .sud-pair:focus-within, .sud-model-select:focus-within { z-index: 31; }
-.sud-card ul.options {
-  z-index: 1000 !important;
-  border: 1px solid var(--border-color-primary) !important;
-  border-radius: 8px !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35) !important;
-  background: var(--background-fill-secondary) !important;
-}
-
-/* gradio красит слой группы (.styler) цветом рамки — у карточек фон должен быть ровным */
-.sud-card .styler, .sud-card > div { background: transparent !important; }
-.sud-card { background: var(--block-background-fill) !important; }
-
-/* выключенный переключатель заметнее */
-:root { --sud-toggle-off: #bdae93; }
-.dark { --sud-toggle-off: #665c54; }
-.sud-toggle input[type=checkbox]:not(:checked) { background: var(--sud-toggle-off) !important; }
-
-/* gradio объединяет соседние поля в .form с заливкой и разделителями */
-.sud-card .form { background: transparent !important; border: none !important; box-shadow: none !important; gap: 0 !important; }
+.sud-compact-slider label span { font-size: 13px !important; color: var(--body-text-color-subdued) !important; margin: 0 !important; white-space: nowrap; }
+.sud-compact-slider input[type=range] { grid-column: 2; grid-row: 1; }
+.sud-compact-slider input[type=number] { grid-column: 3; grid-row: 1; width: 100% !important; text-align: right; }

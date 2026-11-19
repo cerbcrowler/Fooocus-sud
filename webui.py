@@ -25,6 +25,7 @@ from modules.auth import auth_enabled, check_auth
 from modules.util import is_json
 import sud.ui_models  # Fooocus-sud: вкладка «Менеджер»
 import sud.ui_settings  # Fooocus-sud: вкладка «Настройки»
+import sud.ui_cards  # Fooocus-sud: иконки и заголовки карточек
 
 def get_task(*args):
     args = list(args)
@@ -655,10 +656,9 @@ with shared.gradio_root:
 
             with gr.Tab(label='Models'):  # Fooocus-sud: карточки «Модель / LoRA / Сэмплинг»
                 with gr.Group(elem_classes=['sud-card', 'sud-model-card']):
-                    with gr.Row(elem_classes='sud-card-head'):
-                        gr.HTML('<div class="sud-card-title">\U0001F9F1 Модель</div>')
-                        refresh_files = gr.Button(value='\U0001f504', variant='secondary',
-                                                  elem_classes=['sud-icon-btn', 'refresh_button'], scale=0, min_width=34)
+                    gr.HTML(sud.ui_cards.head('Модель', 'box', [('refiner', 'adjustments', 'Refiner'),
+                                                                 ('refresh', 'refresh', 'Обновить списки файлов')]))
+                    refresh_files = gr.Button(value='Refresh', elem_classes=['sud-hidden-btn', 'refresh_button'])
                     base_model = gr.Dropdown(label='Base Model (SDXL only)', choices=modules.config.model_filenames, value=modules.config.default_base_model_name, show_label=False, container=False, elem_classes='sud-model-select')
                     with gr.Accordion('Refiner', open=modules.config.default_refiner_model_name != 'None', elem_classes='sud-refiner'):
                         refiner_model = gr.Dropdown(label='Refiner (SDXL or SD 1.5)', choices=['None'] + modules.config.model_filenames, value=modules.config.default_refiner_model_name, show_label=True)
@@ -674,9 +674,8 @@ with shared.gradio_root:
                                          inputs=refiner_model, outputs=refiner_switch, show_progress=False, queue=False)
 
                 with gr.Group(elem_classes=['sud-card', 'sud-lora-card']):
-                    gr.HTML('<div class="sud-card-head-html"><div class="sud-card-title">\U0001F39A LoRA</div>'
-                            '<span class="sud-lora-count"></span>'
-                            '<button type="button" class="sud-icon-btn sud-lora-alloff" title="Выключить все">⏻</button></div>')
+                    gr.HTML(sud.ui_cards.head('LoRA', 'stack', [('lora-alloff', 'power', 'Выключить все')],
+                                              sub_class='sud-lora-count'))
                     lora_ctrls = []
 
                     for i, (enabled, filename, weight) in enumerate(modules.config.default_loras):
@@ -691,10 +690,10 @@ with shared.gradio_root:
                                                     maximum=modules.config.default_loras_max_weight, step=0.01, value=weight,
                                                     elem_classes=['lora_weight', 'sud-lora-weight'], scale=5)
                             lora_ctrls += [lora_enabled, lora_model, lora_weight]
-                    gr.HTML('<button type="button" class="sud-lora-add">＋ Добавить LoRA</button>')
+                    gr.HTML(sud.ui_cards.add_button('Добавить LoRA'))
 
                 with gr.Group(elem_classes=['sud-card', 'sud-sampling-card']):
-                    gr.HTML('<div class="sud-card-head-html"><div class="sud-card-title">\U0001F39B Сэмплинг</div></div>')
+                    gr.HTML(sud.ui_cards.head('Сэмплинг', 'sliders'))
                     with gr.Row(elem_classes='sud-pair'):
                         sampler_name = gr.Dropdown(label='Sampler', choices=flags.sampler_list,
                                                    value=modules.config.default_sampler)
@@ -702,7 +701,7 @@ with shared.gradio_root:
                                                      value=modules.config.default_scheduler)
                     guidance_scale = gr.Slider(label='CFG', minimum=1.0, maximum=30.0, step=0.01,
                                                value=modules.config.default_cfg_scale, elem_classes='sud-compact-slider')
-                    overwrite_step = gr.Slider(label='Шаги (-1 = авто)',
+                    overwrite_step = gr.Slider(label='Шаги',  # -1 = как в Performance
                                                minimum=-1, maximum=200, step=1,
                                                value=modules.config.default_overwrite_step, elem_classes='sud-compact-slider')
                     sharpness = gr.Slider(label='Резкость', minimum=0.0, maximum=30.0, step=0.001,
