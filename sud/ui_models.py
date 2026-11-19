@@ -21,11 +21,17 @@ def _paths():
     return M.load_paths(FOOOCUS_DIR)
 
 
-def _table():
-    return M.list_files(_paths()) or [["—", "пока пусто", "", ""]]
+ALL = "Все"
 
 
-def _download(url, kind, new_name, keep, progress=gr.Progress(track_tqdm=True)):
+def _table(query="", kind=ALL):
+    rows = M.list_files(_paths())
+    q = (query or "").strip().lower()
+    rows = [r for r in rows if (kind in (None, ALL) or r[0] == kind) and (not q or q in r[1].lower())]
+    return rows or [["—", "ничего не найдено", "", ""]]
+
+
+def _download(url, kind, new_name, keep, query, kind_filter, progress=gr.Progress(track_tqdm=True)):
     url, new_name = (url or "").strip(), (new_name or "").strip() or None
     if not url:
         return "⚠️ Вставь ссылку на файл HuggingFace", gr.update()
@@ -38,7 +44,7 @@ def _download(url, kind, new_name, keep, progress=gr.Progress(track_tqdm=True)):
     progress(0, desc=f"Качаю {os.path.basename(filename)}...")
     path = M.download(paths, kind, url, new_name)
     if not path:
-        return "❌ Не скачалось: подробности в логе Fooocus (`/content/fooocus.log`)", _table()
+        return "❌ Не скачалось: подробности в логе Fooocus (`/content/fooocus.log`)", _table(query, kind_filter)
 
     msg = f"✅ Готово: **{os.path.basename(path)}** ({kind})"
     if keep:
@@ -49,7 +55,7 @@ def _download(url, kind, new_name, keep, progress=gr.Progress(track_tqdm=True)):
                     else " — в `links.txt` уже есть")
         except OSError as e:
             msg += f" — ⚠️ в `links.txt` записать не удалось: {e}"
-    return msg, _table()
+    return msg, _table(query, kind_filter)
 
 
 def build():
@@ -67,11 +73,16 @@ def build():
     status = gr.Markdown()
 
     with gr.Group():
+        with gr.Row():
+            query = gr.Textbox(label="Поиск по имени", max_lines=1, scale=3)
+            kind_filter = gr.Dropdown([ALL] + list(M.KINDS), value=ALL, label="Показать", scale=2)
         table = gr.Dataframe(headers=HEADERS, value=_table, interactive=False, wrap=True)
         refresh_btn = gr.Button("🔄 Обновить список", variant="secondary")
 
-    download_event = download_btn.click(_download, [url, kind, new_name, keep], [status, table])
-    refresh_btn.click(_table, [], table, queue=False, show_progress=False)
+    download_event = download_btn.click(_download, [url, kind, new_name, keep, query, kind_filter],
+                                        [status, table])
+    for trigger in (refresh_btn.click, query.submit, kind_filter.change):
+        trigger(_table, [query, kind_filter], table, queue=False, show_progress=False)
     return {"download_event": download_event, "table": table}
 
 
