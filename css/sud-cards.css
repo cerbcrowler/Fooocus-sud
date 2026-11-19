@@ -376,3 +376,53 @@ body.sud-drag-active, body.sud-drag-active * { user-select: none !important; cur
 .sud-ar-addbtn { color: var(--sud-accent) !important; border-color: var(--sud-accent) !important; }
 .sud-ar-hint { font-size: 12px; color: var(--body-text-color-subdued); margin-top: 6px; min-height: 15px; }
 .sud-ar-err { font-size: 12.5px; color: #cc241d; min-height: 15px; }
+
+/* ================= пресеты сэмплинга (javascript/sud-presets.js) ================= */
+.sud-sp { margin-bottom: 12px; }
+.sud-sp-label { font-size: 12.5px; color: var(--body-text-color-subdued); margin-bottom: 6px; }
+.sud-sp-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sud-sp-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 5px 10px; border-radius: 999px;
+  border: 1px solid var(--sud-line); background: transparent;
+  color: var(--body-text-color); font-size: 13px; cursor: pointer; user-select: none;
+  transition: border-color 0.12s, background 0.12s;
+}
+.sud-sp-chip:hover { border-color: var(--border-color-primary); }
+.sud-sp-chip.on { border: 1.5px solid var(--sud-accent); background: var(--sud-field); color: var(--sud-accent); }
+.sud-sp-chip.on:not(.match) { border-style: dashed; }          /* выбран, но настройки уже сдвинуты */
+.sud-sp-chip.add { color: var(--sud-accent); border-style: dashed; }
+.sud-sp-chip .sud-ico { width: 14px; height: 14px; }
+.sud-sp-ic {
+  display: none; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 5px; color: var(--body-text-color-subdued);
+}
+.sud-sp-chip:hover .sud-sp-ic { display: inline-flex; }
+.sud-sp-ic:hover { background: var(--background-fill-secondary); color: var(--body-text-color); }
+.sud-sp-ic .sud-ico { width: 13px; height: 13px; }
+.sud-sp-ic.danger { display: inline-flex; width: auto; padding: 0 6px; color: #cc241d; font-size: 12px; border: 1px solid #cc241d; }
+.sud-sp-input {
+  height: 30px; padding: 0 10px; border-radius: 999px; min-width: 150px;
+  border: 1px solid var(--sud-accent) !important; background: var(--sud-field) !important;
+  color: var(--body-text-color); font-size: 13px; outline: none;
+}
+.sud-sp-note {
+  margin-top: 8px; font-size: 12.5px; line-height: 1.4; color: var(--body-text-color);
+  border-left: 2px solid var(--sud-accent); padding: 1px 0 1px 8px; cursor: text;
+}
+.sud-sp-note.empty { color: var(--sud-accent); border-left-color: var(--sud-line); opacity: 0.8; }
+.sud-sp-noteedit { display: block; width: 100%; height: auto; min-height: 44px; margin-top: 8px; border-radius: 9px; padding: 6px 8px; resize: vertical; }
+.sud-sp-mod {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px;
+  margin-top: 8px; font-size: 12.5px; color: #b57614;
+}
+.dark .sud-sp-mod { color: #fabd2f; }
+.sud-sp-mod .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
+.sud-sp-mod .txt { flex: 1 1 140px; }
+.sud-sp-btn {
+  padding: 3px 9px; border-radius: 7px; font-size: 12px; cursor: pointer;
+  border: 1px solid var(--sud-line); background: transparent; color: var(--body-text-color);
+}
+.sud-sp-btn:hover { border-color: var(--sud-accent); color: var(--sud-accent); }
+.sud-sp-hint { margin-top: 6px; font-size: 12px; color: var(--body-text-color-subdued); }
+.sud-sp-msg { margin-top: 6px; font-size: 12.5px; color: #cc241d; }

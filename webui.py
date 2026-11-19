@@ -29,6 +29,7 @@ import sud.ui_cards  # Fooocus-sud: иконки и заголовки карт�
 import sud.ui_loras  # Fooocus-sud: удаление и перестановка лор
 import sud.ui_aspect  # Fooocus-sud: карточка «Разрешение»
 import sud.ui_manager  # Fooocus-sud: менеджер моделей
+import sud.ui_presets  # Fooocus-sud: пресеты сэмплинга
 
 def get_task(*args):
     args = list(args)
@@ -701,18 +702,23 @@ with shared.gradio_root:
 
                 with gr.Group(elem_classes=['sud-card', 'sud-sampling-card']):
                     gr.HTML(sud.ui_cards.head('Сэмплинг', 'sliders'))
+                    sud.ui_presets.container()  # Fooocus-sud: пресеты сэмплинга
                     with gr.Row(elem_classes='sud-pair'):
                         sampler_name = gr.Dropdown(label='Sampler', choices=flags.sampler_list,
-                                                   value=modules.config.default_sampler)
+                                                   value=modules.config.default_sampler, elem_id='sud-sampler')
                         scheduler_name = gr.Dropdown(label='Scheduler', choices=flags.scheduler_list,
-                                                     value=modules.config.default_scheduler)
+                                                     value=modules.config.default_scheduler, elem_id='sud-scheduler')
                     guidance_scale = gr.Slider(label='CFG', minimum=1.0, maximum=30.0, step=0.01,
-                                               value=modules.config.default_cfg_scale, elem_classes='sud-compact-slider')
+                                               value=modules.config.default_cfg_scale, elem_classes='sud-compact-slider',
+                                               elem_id='sud-cfg')
                     overwrite_step = gr.Slider(label='Шаги',  # -1 = как в Performance
                                                minimum=-1, maximum=200, step=1,
-                                               value=modules.config.default_overwrite_step, elem_classes='sud-compact-slider')
+                                               value=modules.config.default_overwrite_step, elem_classes='sud-compact-slider',
+                                               elem_id='sud-steps')
                     sharpness = gr.Slider(label='Резкость', minimum=0.0, maximum=30.0, step=0.001,
-                                          value=modules.config.default_sample_sharpness, elem_classes='sud-compact-slider')
+                                          value=modules.config.default_sample_sharpness, elem_classes='sud-compact-slider',
+                                          elem_id='sud-sharpness')
+                    sud.ui_presets.wire(sampler_name, scheduler_name, guidance_scale, overwrite_step, sharpness)
             with gr.Tab(label='\U0001F4E6 Менеджер'):  # Fooocus-sud
                 sud_manager = sud.ui_models.build()
             with gr.Tab(label='⚙️ Настройки'):  # Fooocus-sud
