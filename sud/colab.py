@@ -64,6 +64,18 @@ def models(drive_base):
             f.write(hf_token)
         os.chmod("/root/.cache/huggingface/token", 0o600)
 
+    # ключ DeepL для перевода промпта (sud/translate.py читает его из этого файла)
+    deepl = _secret("DEEPL_API_KEY")
+    if deepl:
+        from sud.translate import KEY_FILE
+        os.makedirs(os.path.dirname(KEY_FILE), exist_ok=True)
+        with open(KEY_FILE, "w") as f:
+            f.write(deepl.strip())
+        os.chmod(KEY_FILE, 0o600)
+        print(f"✅ DeepL-ключ для перевода промпта: {'Free' if deepl.strip().endswith(':fx') else 'Pro'}")
+    else:
+        print("ℹ️ Секрета DEEPL_API_KEY нет — перевод промпта будет через Google")
+
     importlib.reload(sud.models)
     print()
     return sud.models.sync(FOOOCUS_DIR, drive_base, hf_token=hf_token)

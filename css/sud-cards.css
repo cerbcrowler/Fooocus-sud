@@ -426,3 +426,32 @@ body.sud-drag-active, body.sud-drag-active * { user-select: none !important; cur
 .sud-sp-btn:hover { border-color: var(--sud-accent); color: var(--sud-accent); }
 .sud-sp-hint { margin-top: 6px; font-size: 12px; color: var(--body-text-color-subdued); }
 .sud-sp-msg { margin-top: 6px; font-size: 12.5px; color: #cc241d; }
+
+/* ================= перевод промпта (javascript/sud-translate.js) ================= */
+.sud-tr-host { position: relative; }
+.sud-tr {
+  position: absolute; right: 8px; bottom: 6px; z-index: 5;
+  display: flex; align-items: center; gap: 4px;
+  pointer-events: none;
+}
+.sud-tr > * { pointer-events: auto; }
+.sud-tr-btn, .sud-tr-undo {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 24px; padding: 0 8px; border-radius: 7px;
+  border: 1px solid var(--sud-line); background: var(--background-fill-secondary);
+  color: var(--body-text-color-subdued); font-size: 11.5px; cursor: pointer;
+  opacity: 0.55; transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+}
+.sud-tr-btn .sud-ico, .sud-tr-undo .sud-ico { width: 14px; height: 14px; }
+.sud-tr-host:hover .sud-tr-btn, .sud-tr-btn:focus { opacity: 0.9; }
+.sud-tr.has-ru .sud-tr-btn { opacity: 1; color: var(--sud-accent); border-color: var(--sud-accent); }
+.sud-tr-undo { display: none; padding: 0 6px; }
+.sud-tr.can-undo .sud-tr-undo { display: inline-flex; opacity: 0.9; }
+.sud-tr.busy .sud-tr-btn { opacity: 1; pointer-events: none; }
+.sud-tr.busy .sud-tr-btn .sud-ico { animation: sud-spin 0.9s linear infinite; }
+.sud-tr-note { font-size: 11.5px; color: var(--body-text-color-subdued); background: var(--background-fill-secondary); border-radius: 6px; padding: 0 6px; line-height: 22px; }
+.sud-tr-note:empty { display: none; }
+.sud-tr-note.warn { color: #b57614; }
+.dark .sud-tr-note.warn { color: #fabd2f; }
+/* чтобы текст не прятался под кнопкой */
+#positive_prompt textarea, #negative_prompt textarea { padding-bottom: 30px !important; }

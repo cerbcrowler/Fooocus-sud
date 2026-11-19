@@ -22,6 +22,7 @@ from sud import prefetch as P
 from sud import settings as S
 
 AUTO_LABEL = "(авто: первый чекпоинт из links.txt)"
+TR_ENGINES = {"DeepL (если не получится — Google)": "deepl", "Только Google": "google"}
 RESTART_SCRIPT = "/content/restart_fooocus.sh"
 RESTART_LOG = "/content/restart.log"
 
@@ -120,6 +121,14 @@ def build():
                                                      value=cfg.get("default_advanced_checkbox", True))
         f["sud_hide_styles_tab"] = gr.Checkbox(label="Скрыть вкладку Styles (стили по умолчанию продолжат работать)",
                                                value=bool(cfg.get("sud_hide_styles_tab", False)))
+
+    with gr.Accordion("Перевод промпта RU → EN", open=False):
+        f["sud_translate_engine"] = gr.Radio(list(TR_ENGINES), label="Чем переводить",
+                                             value=next((k for k, v in TR_ENGINES.items()
+                                                         if v == cfg.get("sud_translate_engine", "deepl")),
+                                                        list(TR_ENGINES)[0]))
+        f["sud_auto_translate"] = gr.Checkbox(label="Переводить автоматически при Generate, если в промпте есть русский текст",
+                                              value=bool(cfg.get("sud_auto_translate", False)))
 
     with gr.Accordion("Значения по умолчанию", open=True):
         capture_btn = gr.Button("📥 Взять из текущих настроек интерфейса", variant="secondary")
@@ -229,6 +238,8 @@ def _prefetch_status_md():
 
 
 def _validate_and_convert(d):
+    d["sud_translate_engine"] = TR_ENGINES.get(d.get("sud_translate_engine"), "deepl")
+    d["sud_auto_translate"] = bool(d.get("sud_auto_translate"))
     d[P.SETTINGS_KEY] = _labels_to_groups(d.get(P.SETTINGS_KEY))
     d["default_max_lora_number"] = int(d["default_max_lora_number"])
     d["default_max_image_number"] = int(d["default_max_image_number"])
