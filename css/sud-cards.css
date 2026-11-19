@@ -294,3 +294,85 @@
 body.sud-drag-active, body.sud-drag-active * { user-select: none !important; cursor: grabbing !important; }
 .sud-grip { touch-action: none; }
 .sud-lora-row.sud-dragging { opacity: 0.45; }
+
+/* ================= карточка «Разрешение» (javascript/sud-aspect.js) ================= */
+#aspect_ratios_accordion { display: none !important; }   /* родной переключатель — скрытый «двигатель» */
+
+.sud-ar-head { cursor: pointer; user-select: none; margin-bottom: 0 !important; }
+.sud-ar-chev { display: flex; color: var(--body-text-color-subdued); transition: transform 0.15s; }
+.sud-ar-card.sud-collapsed .sud-ar-chev { transform: rotate(-90deg); }
+.sud-ar-card.sud-collapsed .sud-ar-body { display: none; }
+.sud-ar-body { margin-top: 14px; }
+
+.sud-ar-seg { display: flex; gap: 4px; margin-bottom: 10px; }
+.sud-ar-seg-btn {
+  flex: 1; padding: 5px 0; font-size: 12.5px;
+  border-radius: 8px; border: 1px solid var(--sud-line);
+  background: transparent; color: var(--body-text-color-subdued); cursor: pointer;
+}
+.sud-ar-seg-btn.on { border-color: var(--sud-accent); color: var(--sud-accent); background: var(--sud-field); }
+
+.sud-ar-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.sud-ar-empty { grid-column: 1 / -1; text-align: center; color: var(--body-text-color-subdued); padding: 10px 0; font-size: 13px; }
+.sud-ar-tile {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  padding: 10px 6px 8px;
+  border: 1px solid var(--sud-line); border-radius: 10px;
+  cursor: pointer; min-height: 84px; justify-content: flex-end;
+  transition: border-color 0.12s, background 0.12s;
+}
+.sud-ar-tile:hover { border-color: var(--border-color-primary); }
+.sud-ar-tile.sel { border: 1.5px solid var(--sud-accent); background: var(--sud-field); }
+.sud-ar-shape { border: 1.5px solid var(--body-text-color-subdued); border-radius: 3px; }
+.sud-ar-tile.sel .sud-ar-shape { border-color: var(--sud-accent); }
+.sud-ar-res { font-size: 13px; font-weight: 600; color: var(--body-text-color); }
+.sud-ar-rat { font-size: 11.5px; color: var(--body-text-color-subdued); }
+.sud-ar-grip, .sud-ar-ed, .sud-ar-del {
+  position: absolute; top: 3px;
+  display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; padding: 0;
+  border: none; border-radius: 6px; background: transparent;
+  color: var(--body-text-color-subdued); opacity: 0; cursor: pointer;
+  transition: opacity 0.12s, background 0.12s;
+}
+.sud-ar-grip { left: 3px; cursor: grab; touch-action: none; }
+.sud-ar-ed { right: 25px; }
+.sud-ar-del { right: 3px; }
+.sud-ar-grip .sud-ico, .sud-ar-ed .sud-ico, .sud-ar-del .sud-ico { width: 14px; height: 14px; }
+.sud-ar-tile:hover .sud-ar-grip, .sud-ar-tile:hover .sud-ar-ed, .sud-ar-tile:hover .sud-ar-del { opacity: 0.75; }
+.sud-ar-ed:hover, .sud-ar-del:hover { opacity: 1 !important; background: var(--background-fill-secondary); }
+.sud-ar-del:hover { color: #cc241d; }
+@media (hover: none) { .sud-ar-grip, .sud-ar-ed, .sud-ar-del { opacity: 0.6; } }
+.sud-ar-tile.dragging { opacity: 0.4; }
+.sud-ar-tile.drop-before { box-shadow: inset 3px 0 0 var(--sud-accent); }
+.sud-ar-tile.drop-after { box-shadow: inset -3px 0 0 var(--sud-accent); }
+
+.sud-ar-tile.editing { cursor: default; justify-content: center; gap: 8px; border-color: var(--sud-accent); }
+.sud-ar-edit { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); align-items: center; gap: 2px; width: 100%; }
+.sud-ar-edit span { color: var(--body-text-color-subdued); font-size: 12px; }
+.sud-ar-tile.editing input[type=number] {
+  width: 100%; min-width: 0; height: 26px; padding: 0 1px !important; text-align: center;
+  font-size: 12px !important; border-color: var(--sud-line) !important; background: var(--sud-field) !important;
+}
+.sud-ar-ok {
+  display: flex; align-items: center; justify-content: center;
+  width: 26px; height: 24px; padding: 0; border-radius: 6px;
+  border: 1px solid var(--sud-accent); background: transparent; color: var(--sud-accent); cursor: pointer;
+}
+.sud-ar-ok .sud-ico { width: 14px; height: 14px; }
+
+.sud-ar-add {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto auto;
+  gap: 6px; align-items: center;
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--sud-line);
+}
+.sud-ar-add input[type=number] {
+  height: 32px; text-align: center;
+  border-color: var(--sud-line) !important; background: var(--sud-field) !important;
+}
+.sud-ar-mul { color: var(--body-text-color-subdued); }
+.sud-ar-add .sud-ibtn { width: 32px; height: 32px; }
+.sud-ar-addbtn { color: var(--sud-accent) !important; border-color: var(--sud-accent) !important; }
+.sud-ar-hint { font-size: 12px; color: var(--body-text-color-subdued); margin-top: 6px; min-height: 15px; }
+.sud-ar-err { font-size: 12.5px; color: #cc241d; min-height: 15px; }

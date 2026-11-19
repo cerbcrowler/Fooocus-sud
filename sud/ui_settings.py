@@ -115,9 +115,7 @@ def build():
                                                       value=cfg.get("default_loras_max_weight", 2))
         f["default_max_image_number"] = gr.Slider(1, 64, step=1, label="Максимум картинок за раз",
                                                   value=cfg.get("default_max_image_number", 32))
-        f["available_aspect_ratios"] = gr.Textbox(
-            label="Пропорции (ширина*высота через запятую)", lines=3,
-            value=ratios_to_text(cfg.get("available_aspect_ratios") or C.available_aspect_ratios))
+        # список разрешений теперь правится в карточке «Разрешение» (Models), здесь его нет
         f["default_advanced_checkbox"] = gr.Checkbox(label="Панель Advanced открыта при запуске",
                                                      value=cfg.get("default_advanced_checkbox", True))
         f["sud_hide_styles_tab"] = gr.Checkbox(label="Скрыть вкладку Styles (стили по умолчанию продолжат работать)",
@@ -181,7 +179,9 @@ def build():
         err = _validate_and_convert(data)
         if err:
             return f"⚠️ {err}"
-        path = S.save_user(data)
+        # дописать поверх сохранённого: ключи из других мест (например, список разрешений из
+        # карточки «Разрешение») не должны пропадать при сохранении этой вкладки
+        path = S.save_user({**S.load_user(), **data})
         S.apply()
         return f"✅ Сохранено в `{path}`. {_restart()}"
 
@@ -242,12 +242,11 @@ def _validate_and_convert(d):
     d["default_loras"] = text_to_loras(d["default_loras"])
     if len(d["default_loras"]) > d["default_max_lora_number"]:
         return f"LoRA по умолчанию ({len(d['default_loras'])}) больше, чем слотов ({d['default_max_lora_number']})"
-    d["available_aspect_ratios"] = text_to_ratios(d["available_aspect_ratios"])
-    if not d["available_aspect_ratios"]:
-        return "список пропорций пуст"
+    available = S.effective().get("available_aspect_ratios") or []  # список ведёт карточка «Разрешение»
     ar = ratio_label_to_value(d["default_aspect_ratio"]) or ""
-    if ar not in d["available_aspect_ratios"]:
-        return f"пропорции по умолчанию «{d['default_aspect_ratio']}» нет в списке пропорций"
+    if ar not in available:
+        return (f"разрешения «{d['default_aspect_ratio']}» нет в списке — сначала добавь его "
+                f"в карточке «Разрешение» на вкладке Models")
     d["default_aspect_ratio"] = ar
     d["default_cfg_scale"] = float(d["default_cfg_scale"])
     d["default_sample_sharpness"] = float(d["default_sample_sharpness"])

@@ -27,6 +27,7 @@ import sud.ui_models  # Fooocus-sud: вкладка «Менеджер»
 import sud.ui_settings  # Fooocus-sud: вкладка «Настройки»
 import sud.ui_cards  # Fooocus-sud: иконки и заголовки карточек
 import sud.ui_loras  # Fooocus-sud: удаление и перестановка лор
+import sud.ui_aspect  # Fooocus-sud: карточка «Разрешение»
 
 def get_task(*args):
     args = list(args)
@@ -673,6 +674,8 @@ with shared.gradio_root:
 
                     refiner_model.change(lambda x: gr.update(visible=x != 'None'),
                                          inputs=refiner_model, outputs=refiner_switch, show_progress=False, queue=False)
+
+                sud.ui_aspect.build(aspect_ratios_selection)  # Fooocus-sud: карточка «Разрешение»
 
                 with gr.Group(elem_classes=['sud-card', 'sud-lora-card']):
                     gr.HTML(sud.ui_cards.head('LoRA', 'stack', [('lora-alloff', 'power', 'Выключить все')],

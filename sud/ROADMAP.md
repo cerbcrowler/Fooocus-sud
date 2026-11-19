@@ -12,6 +12,9 @@
 - [ ] Ускорить загрузку с HF через `hf_transfer`.
 
 ## Сделано
+- [x] Карточка «Разрешение» (Models): плитки-превью, фильтр, выбор, правка, удаление, добавление, перетаскивание,
+      сворачивание; список в settings.json без перезапуска (`sud/ui_aspect.py`, `javascript/sud-aspect.js`).
+- [x] LoRA: ✕ убрать слот, перетаскивание ⋮⋮; Refiner скрыт; галочка «Скрыть вкладку Styles».
 - [x] Вкладка Models в карточках: «Модель» (🔄 в заголовке, Refiner свёрнут), «LoRA» (переключатели, имя в 2 строки,
       пустые слоты скрыты, «＋ Добавить»), «Сэмплинг» (sampler/scheduler, CFG, шаги, резкость). `css/sud-cards.css`, `javascript/sud-loras.js`.
       Дальше в том же стиле: Settings, Styles, Advanced, Enhance/Inpaint.
