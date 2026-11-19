@@ -11,6 +11,17 @@
 - [ ] Ссылки Civitai в `links.txt` (секрет `CIVITAI_TOKEN`).
 - [ ] Ускорить загрузку с HF через `hf_transfer`.
 
+## Идеи из чужих форков (ресерч 2026-11-20)
+- **mashb1t/Fooocus** — «кухня» главного мейнтейнера; почти всё уже влито в наш 2.5.5. Можно взять мелочь: подпись шагов у Performance («Speed ∣ 30 steps»).
+- **micha42-dot/Fooocus_Advanced** (0.9.2, 2026-11; код залит через web-upload, истории изменений нет, база — mashb1t, gradio 3.41.2 как у нас).
+  Кандидаты на перенос по одному, с A/B-проверкой на T4/L4:
+  - [ ] Compose with boxes — регионы с отдельными промптами (attention couple, без доп. моделей): `modules/composition*.py`
+  - [ ] APG / CFG++ / PAG — меньше пересвета, больше деталей: `modules/guidance.py`
+  - [ ] Quality 10 (AYS) — 10 шагов DPM++ 2M SDE без доп. модели
+  - [ ] DeepCache / ToMeSD — ускорение: `modules/unet_cache.py`, `modules/tomesd.py`
+  - [ ] Tiled SDXL Detail Upscale 2.0: `modules/tiled_upscale.py`
+  - не нужно: внешние API (fal/Replicate), SAM 3, torch.compile (в Colab кэш не живёт), свой перевод
+
 ## Сделано
 - [x] Всё на Drive в `MyDrive/FOOOCUS-SUD` (`sud/paths.py`), старые COLAB_MOUNTS — запасные.
 - [x] Панель 🧬 эмбеддингов у промпта: превью, поиск, ★, недавние, neg, SD1.5-метка, вставка/удаление кликом.
