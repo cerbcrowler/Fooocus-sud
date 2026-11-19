@@ -542,7 +542,8 @@ body.sud-drag-active, body.sud-drag-active * { user-select: none !important; cur
 .sud-em-name small { display: block; font-size: 10px; color: var(--body-text-color-subdued); overflow: hidden; text-overflow: ellipsis; }
 
 /* панель живёт вне контейнера gradio — явно его шрифт */
-.sud-em-panel, .sud-em-panel button, .sud-em-panel input {
+.sud-em-panel, .sud-em-panel button, .sud-em-panel input,
+.sud-cmp, .sud-cmp button, .sud-cmp input, .sud-cmp textarea {
   font-family: var(--font, "Source Sans Pro"), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
