@@ -1,0 +1,176 @@
+/* Fooocus-sud: темы gruvbox light / dark.
+ *
+ * Gradio 3.41 берёт все цвета из CSS-переменных: светлая тема на :root,
+ * тёмная на .dark (класс на <body>). Этот файл грузится после theme.css
+ * и переопределяет их. Переключатель — javascript/sud-theme.js.
+ *
+ * Палитра gruvbox: https://github.com/morhetz/gruvbox
+ */
+
+:root {
+  /* нейтральные: от светлого фона (bg0) до тёмного (bg0_h dark) */
+  --neutral-50: #fbf1c7;
+  --neutral-100: #f2e5bc;
+  --neutral-200: #ebdbb2;
+  --neutral-300: #d5c4a1;
+  --neutral-400: #bdae93;
+  --neutral-500: #a89984;
+  --neutral-600: #7c6f64;
+  --neutral-700: #665c54;
+  --neutral-800: #504945;
+  --neutral-900: #3c3836;
+  --neutral-950: #282828;
+
+  /* акцент: оранжевый */
+  --primary-50: #fbecd8;
+  --primary-100: #f8dcbc;
+  --primary-200: #f4c08c;
+  --primary-300: #fe9d4f;
+  --primary-400: #fe8019;
+  --primary-500: #d65d0e;
+  --primary-600: #af3a03;
+  --primary-700: #8f3002;
+  --primary-800: #6f2502;
+  --primary-900: #4f1a01;
+  --primary-950: #301000;
+
+  /* второй акцент (галочки, фокус): синий/бирюзовый */
+  --secondary-50: #e3edee;
+  --secondary-100: #cbdfe1;
+  --secondary-200: #a7c6ca;
+  --secondary-300: #83a598;
+  --secondary-400: #689d6a;
+  --secondary-500: #458588;
+  --secondary-600: #076678;
+  --secondary-700: #065463;
+  --secondary-800: #05424e;
+  --secondary-900: #032f38;
+  --secondary-950: #021e24;
+
+  /* светлая: явные значения, где gradio пишет white */
+  --body-background-fill: #f9f5d7;
+  --background-fill-primary: #fbf1c7;
+  --background-fill-secondary: #f2e5bc;
+  --block-background-fill: #fbf1c7;
+  --input-background-fill: #f9f5d7;
+  --table-even-background-fill: #fbf1c7;
+  --table-odd-background-fill: #f2e5bc;
+  --checkbox-label-background-fill: #f2e5bc;
+  --checkbox-label-background-fill-hover: #ebdbb2;
+  --body-text-color: #3c3836;
+  --body-text-color-subdued: #7c6f64;
+  --block-label-text-color: #665c54;
+  --block-title-text-color: #665c54;
+  --border-color-primary: #d5c4a1;
+  --link-text-color: #076678;
+  --link-text-color-hover: #458588;
+  --link-text-color-visited: #8f3f71;
+
+  --button-primary-background-fill: #d65d0e;
+  --button-primary-background-fill-hover: #af3a03;
+  --button-primary-border-color: #af3a03;
+  --button-primary-text-color: #fbf1c7;
+  --button-primary-text-color-hover: #fbf1c7;
+  --button-secondary-background-fill: #ebdbb2;
+  --button-secondary-background-fill-hover: #d5c4a1;
+  --button-secondary-border-color: #d5c4a1;
+  --button-secondary-text-color: #3c3836;
+  --button-cancel-background-fill: #cc241d;
+  --button-cancel-background-fill-hover: #9d0006;
+  --button-cancel-border-color: #9d0006;
+  --button-cancel-text-color: #fbf1c7;
+
+  --sud-progress: #d65d0e;
+  --sud-progress-track: #ebdbb2;
+  --sud-tooltip-bg: #f2e5bc;
+  --sud-tooltip-text: #3c3836;
+  --sud-tooltip-border: #d5c4a1;
+}
+
+.dark {
+  --body-background-fill: #1d2021;
+  --background-fill-primary: #282828;
+  --background-fill-secondary: #32302f;
+  --block-background-fill: #282828;
+  --block-label-background-fill: #32302f;
+  --input-background-fill: #32302f;
+  --input-background-fill-focus: #3c3836;
+  --table-even-background-fill: #282828;
+  --table-odd-background-fill: #32302f;
+  --checkbox-background-color: #3c3836;
+  --checkbox-label-background-fill: #32302f;
+  --checkbox-label-background-fill-hover: #3c3836;
+  --checkbox-label-background-fill-selected: #3c3836;
+  --body-text-color: #ebdbb2;
+  --body-text-color-subdued: #a89984;
+  --block-label-text-color: #bdae93;
+  --block-title-text-color: #bdae93;
+  --block-info-text-color: #a89984;
+  --input-placeholder-color: #7c6f64;
+  --border-color-primary: #504945;
+  --block-border-color: #3c3836;
+  --input-border-color: #504945;
+  --color-accent: #fe8019;
+  --color-accent-soft: #3c3836;
+  --link-text-color: #83a598;
+  --link-text-color-hover: #8ec07c;
+  --link-text-color-visited: #d3869b;
+  --checkbox-background-color-selected: #458588;
+  --checkbox-border-color-selected: #83a598;
+
+  --button-primary-background-fill: #fe8019;
+  --button-primary-background-fill-hover: #d65d0e;
+  --button-primary-border-color: #d65d0e;
+  --button-primary-text-color: #1d2021;
+  --button-primary-text-color-hover: #1d2021;
+  --button-secondary-background-fill: #3c3836;
+  --button-secondary-background-fill-hover: #504945;
+  --button-secondary-border-color: #504945;
+  --button-secondary-text-color: #ebdbb2;
+  --button-secondary-text-color-hover: #fbf1c7;
+  --button-cancel-background-fill: #cc241d;
+  --button-cancel-background-fill-hover: #fb4934;
+  --button-cancel-border-color: #fb4934;
+  --button-cancel-text-color: #fbf1c7;
+
+  --sud-progress: #fe8019;
+  --sud-progress-track: #3c3836;
+  --sud-tooltip-bg: #32302f;
+  --sud-tooltip-text: #ebdbb2;
+  --sud-tooltip-border: #504945;
+}
+
+/* --- места, где у Fooocus цвета зашиты в css/style.css --- */
+.loader { border-color: var(--sud-progress-track); border-top-color: var(--sud-progress); }
+progress { background-color: var(--sud-progress-track); }
+progress::-webkit-progress-bar { background-color: var(--sud-progress-track); }
+progress::-webkit-progress-value { background-color: var(--sud-progress); }
+progress::-moz-progress-bar { background-color: var(--sud-progress); }
+#context-menu { border-color: var(--primary-600); box-shadow: 1px 1px 2px var(--primary-500); }
+.context-menu-items a:hover { background: var(--primary-600); }
+.canvas-tooltip-content, .preview-tooltip {
+  background-color: var(--sud-tooltip-bg);
+  color: var(--sud-tooltip-text);
+  border-color: var(--sud-tooltip-border);
+}
+
+/* --- переключатель темы (кнопка справа сверху) --- */
+#sud-theme-toggle {
+  position: fixed;
+  top: 10px;
+  right: 12px;
+  z-index: 1000;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color-primary);
+  background: var(--background-fill-secondary);
+  color: var(--body-text-color);
+  font-size: 18px;
+  line-height: 34px;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: var(--shadow-drop);
+  transition: transform 0.15s ease;
+}
+#sud-theme-toggle:hover { transform: scale(1.1); }
