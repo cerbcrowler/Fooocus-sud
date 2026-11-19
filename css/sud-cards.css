@@ -518,3 +518,63 @@ body.sud-drag-active, body.sud-drag-active * { user-select: none !important; cur
 .sud-em-panel, .sud-em-panel button, .sud-em-panel input {
   font-family: var(--font, "Source Sans Pro"), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
+
+/* ================= КОМПАКТНЫЙ РЕЖИМ (маленький экран ноутбука) =================
+ * Перебивает размеры выше: меньше воздуха между карточками и внутри них.
+ * Все «плотности» собраны здесь, чтобы при желании легко вернуть просторнее.
+ */
+:root { --sud-pad: 8px; --sud-pad-x: 10px; --sud-gap: 5px; --sud-ctl: 30px; }
+
+/* зазор между карточками (gradio ставит большой gap у колонки-родителя) */
+*:has(> .sud-card) { gap: var(--sud-gap) !important; }
+.tabitem:has(.sud-card) { padding-top: 4px !important; padding-bottom: 4px !important; }
+.sud-card { padding: var(--sud-pad) var(--sud-pad-x) !important; margin: 0 !important; border-radius: 11px !important; }
+
+/* заголовки карточек */
+.sud-head { margin: 0 0 6px !important; gap: 6px !important; }
+.sud-head-title { font-size: 13.5px !important; }
+.sud-head-sub { font-size: 12px !important; }
+.sud-ico { width: 15px !important; height: 15px !important; }
+.sud-ibtn { width: 24px !important; height: 24px !important; border-radius: 6px !important; }
+.sud-ibtn .sud-ico { width: 14px !important; height: 14px !important; }
+.sud-ar-head { margin-bottom: 0 !important; }
+.sud-ar-body { margin-top: 8px !important; }
+
+/* поля выбора */
+.sud-card .wrap:has(> .wrap-inner) { min-height: var(--sud-ctl) !important; border-radius: 8px !important; }
+.sud-card .wrap-inner { min-height: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }
+.sud-card .secondary-wrap input { font-size: 13px !important; height: calc(var(--sud-ctl) - 2px) !important; padding-top: 0 !important; padding-bottom: 0 !important; }
+.sud-card label > span:not(.sr-only) { margin-bottom: 3px !important; font-size: 12px !important; }
+
+/* LoRA */
+.sud-lora-row { padding: 5px 0 6px !important; row-gap: 2px !important; column-gap: 6px !important; }
+.sud-lora-label { min-height: var(--sud-ctl) !important; font-size: 13px !important; padding: 1px 22px 1px 6px !important; }
+.sud-lora-label small { font-size: 11px !important; }
+.sud-lora-name .wrap:has(> .wrap-inner) { min-height: var(--sud-ctl) !important; }
+.sud-toggle input[type=checkbox] { width: 28px !important; height: 16px !important; border-radius: 8px !important; }
+.sud-toggle input[type=checkbox]::after { width: 12px !important; height: 12px !important; top: 2px !important; left: 2px !important; }
+.sud-toggle input[type=checkbox]:checked::after { left: 14px !important; }
+.sud-lora-weight input[type=number] { top: 8px !important; height: 24px !important; width: 50px !important; }
+.sud-lora-weight input[type=range] { margin-top: 0 !important; }
+.sud-lora-add { padding: 6px 2px 0 !important; font-size: 13px !important; }
+.sud-grip { height: 22px !important; }
+.sud-lora-del { width: 22px !important; height: 22px !important; }
+
+/* Сэмплинг */
+.sud-pair { margin-bottom: 4px !important; }
+.sud-compact-slider { padding: 2px 0 !important; column-gap: 8px !important; grid-template-columns: 70px minmax(0, 1fr) 44px !important; }
+.sud-card input[type=number] { height: 24px !important; font-size: 13px !important; }
+.sud-sp { margin-bottom: 6px !important; }
+.sud-sp-label { margin-bottom: 4px !important; }
+.sud-sp-chip { padding: 3px 9px !important; font-size: 12.5px !important; }
+.sud-sp-note, .sud-sp-mod { margin-top: 5px !important; }
+
+/* Разрешение */
+.sud-ar-seg { margin-bottom: 6px !important; }
+.sud-ar-seg-btn { padding: 3px 0 !important; }
+.sud-ar-grid { gap: 5px !important; }
+.sud-ar-tile { min-height: 66px !important; padding: 6px 4px 5px !important; gap: 3px !important; }
+.sud-ar-res { font-size: 12px !important; }
+.sud-ar-add { margin-top: 8px !important; padding-top: 8px !important; }
+.sud-ar-add input[type=number], .sud-ar-add .sud-ibtn { height: 28px !important; }
+.sud-ar-add .sud-ibtn { width: 28px !important; }
