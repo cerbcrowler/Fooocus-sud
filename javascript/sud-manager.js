@@ -144,7 +144,8 @@
         const cats = [[ALL, 'Все', S.items.length]].concat(S.categories.map((c) => [c, catName(c), counts[c] || 0]));
         if (counts[OUTSIDE]) cats.push([OUTSIDE, 'Вне каталога', counts[OUTSIDE]]);
         if (!cats.some(([k]) => k === ui.cat)) ui.cat = ALL;
-        root.querySelector('.sud-mm-side').innerHTML = cats.map(([k, name, n]) =>
+        // пока вводится имя новой категории — список не перерисовываем (иначе поле пропадает)
+        if (!root.querySelector('.sud-mm-side .sud-mm-catinput')) root.querySelector('.sud-mm-side').innerHTML = cats.map(([k, name, n]) =>
             `<button type="button" class="sud-mm-cat${k === ui.cat ? ' on' : ''}" data-cat="${esc(k)}"><span>${esc(name)}</span><small>${n}</small></button>`).join('') +
             `<button type="button" class="sud-mm-newcat">${I.plus}<span>Категория</span></button>`;
         // фильтры
@@ -190,14 +191,14 @@
         if (!S) return;
         const root = document.querySelector('.sud-mm');
         const active = document.activeElement;
-        if (active && active.closest && active.closest('.sud-mm-table') && active.matches('input, select')) return; // не мешать правке
+        if (active && active.closest && active.closest('.sud-mm-table') && active.matches('input, select, textarea')) return; // не мешать правке
         const rows = visible();
         const catOptions = (cur) => [''].concat(S.categories.filter((c) => c !== ''))
             .map((c) => `<option value="${esc(c)}"${c === cur ? ' selected' : ''}>${esc(catName(c))}</option>`).join('');
         root.querySelector('.sud-mm-table tbody').innerHTML = rows.map((it) => `
           <tr data-key="${esc(it.url || it.file)}" data-url="${esc(it.url)}" data-file="${esc(it.file)}" class="${it.current ? 'cur' : ''}">
             <td class="c-star">${it.url ? `<input type="checkbox" class="sud-mm-star"${it.autoload ? ' checked' : ''} title="Грузить при старте">` : ''}</td>
-            <td class="c-name"><div class="sud-mm-name" title="Двойной клик — переименовать">${esc(it.title)}</div><div class="sud-mm-file">${esc(it.file)}</div></td>
+            <td class="c-name"><div class="sud-mm-name" title="Двойной клик — переименовать">${esc(it.title)}</div><div class="sud-mm-file">${esc(it.file)}</div>${it.url ? `<div class="sud-mm-note${it.note ? '' : ' empty'}" title="Клик — изменить заметку">${it.note ? esc(it.note) : '＋ заметка'}</div>` : ''}</td>
             <td class="c-cat">${it.url ? `<select class="sud-mm-catsel">${catOptions(it.category)}</select>` : '<span class="sud-mm-tag">вне каталога</span>'}</td>
             <td class="c-size">${gb(it.size)}</td>
             <td class="c-st">${statusCell(it)}</td>
@@ -254,6 +255,15 @@
             ui.adding = false; renderAddForm();
             return;
         }
+        const note = e.target.closest('.sud-mm-note');
+        if (note && !note.querySelector('textarea')) {
+            const cur = note.classList.contains('empty') ? '' : note.textContent;
+            note.classList.remove('empty');
+            note.innerHTML = `<textarea class="sud-mm-noteedit" rows="2" placeholder="Твои впечатления: сильные стороны, лучшие настройки… Enter — сохранить, Esc — отмена">${esc(cur)}</textarea>`;
+            const ta = note.querySelector('textarea');
+            ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+            return;
+        }
         const act = e.target.closest('.sud-mm-act');
         if (act) {
             const tr = act.closest('tr');
@@ -291,11 +301,21 @@
         if (!ui.open) return;
         const t = e.target;
         if (e.key === 'Escape') {
-            if (t.matches && t.matches('.sud-mm-rename, .sud-mm-catinput')) { t.blur(); renderTable(); render(); return; }
+            if (t.matches && t.matches('.sud-mm-rename, .sud-mm-catinput, .sud-mm-noteedit')) {
+                if (t.matches('.sud-mm-catinput')) t.remove();
+                t.blur(); render(); return;
+            }
             close();
             return;
         }
         if (e.key !== 'Enter' || !t.matches) return;
+        if (t.matches('.sud-mm-noteedit')) {
+            if (e.shiftKey) return;            // Shift+Enter — просто перенос в поле (в файле станет пробелом)
+            e.preventDefault();
+            send({ op: 'note', url: t.closest('tr').dataset.url, note: t.value });
+            t.blur();
+            return;
+        }
         if (t.matches('.sud-mm-rename')) {
             const tr = t.closest('tr');
             send({ op: 'title', url: tr.dataset.url, title: t.value });

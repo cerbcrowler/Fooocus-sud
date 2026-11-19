@@ -37,6 +37,7 @@ class Entry:
     star: bool = False        # «*» в строке
     line: int = -1            # номер строки в файле
     autoload: bool = False    # итог с учётом старого формата
+    note: str = ""            # заметка = комментарий после « #» в строке
 
     @property
     def filename(self):
@@ -62,8 +63,13 @@ def target_filename(url, name=""):
     return name if os.path.splitext(name)[1] else name + os.path.splitext(orig)[1]
 
 
+NOTE_RE = re.compile(r"\s#\s?(.*)$")
+
+
 def _parse_entry_line(raw):
-    """→ (star, url, name, title) или None."""
+    """→ (star, url, name, title, note) или None."""
+    m = NOTE_RE.search(raw)
+    note = m.group(1).strip() if m else ""
     line = COMMENT_RE.sub("", raw).strip()
     if not line:
         return None
@@ -76,7 +82,7 @@ def _parse_entry_line(raw):
         return None
     name = parts[1] if len(parts) > 1 else ""
     title = parts[2] if len(parts) > 2 else ""
-    return star, url, name, title
+    return star, url, name, title, note
 
 
 class Catalog:
@@ -115,8 +121,8 @@ class Catalog:
                 continue
             parsed = _parse_entry_line(raw)
             if parsed:
-                star, url, name, title = parsed
-                entries.append(Entry(kind, category, url, name, title, star, i))
+                star, url, name, title, note = parsed
+                entries.append(Entry(kind, category, url, name, title, star, i, note=note))
         # старый формат: нет ни одной «*» в типе и нет метки перехода → грузится всё
         starred = {e.kind for e in entries if e.star} | self._marked_kinds()
         for e in entries:
@@ -169,10 +175,8 @@ class Catalog:
         star = changes.get("star", e.star)
         name = changes.get("name", e.name)
         title = changes.get("title", e.title)
-        comment = ""
-        m = re.search(r"\s#.*$", self.lines[e.line])
-        if m:
-            comment = "  " + m.group(0).strip()
+        note = " ".join(str(changes.get("note", e.note)).split())   # заметка — одна строка
+        comment = f"  # {note}" if note else ""
         self.lines[e.line] = self._format(star, e.url, name, title) + comment
 
     def _materialize_stars(self, kind):
@@ -199,6 +203,14 @@ class Catalog:
         self._materialize_stars(e.kind)
         e = self.find(url)
         self._rewrite(e, star=bool(on))
+        self.save()
+        return True
+
+    def set_note(self, url, note):
+        e = self.find(url)
+        if not e:
+            return False
+        self._rewrite(e, note=note)
         self.save()
         return True
 

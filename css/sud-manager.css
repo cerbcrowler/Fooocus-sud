@@ -169,3 +169,27 @@ body.sud-mm-open .sud-mm {
   .sud-mm-side { flex-direction: row; flex-wrap: wrap; border-right: none; border-bottom: 1px solid var(--sud-line); }
   .sud-mm-table .c-cat, .sud-mm-table .c-size { display: none; }
 }
+
+/* шрифт gradio (панель живёт вне его контейнера) */
+.sud-mm, .sud-mm button, .sud-mm input, .sud-mm select, .sud-mm textarea {
+  font-family: var(--font, "Source Sans Pro"), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.sud-mm button, .sud-mm input, .sud-mm select, .sud-mm textarea { font-size: inherit; }
+
+/* заметки к моделям */
+.sud-mm-note {
+  margin-top: 4px; font-size: 12.5px; line-height: 1.35;
+  color: var(--body-text-color); opacity: 0.85;
+  cursor: text; white-space: normal; word-break: break-word;
+  border-left: 2px solid var(--sud-line); padding-left: 8px;
+}
+.sud-mm-note:hover { border-left-color: var(--sud-accent); }
+.sud-mm-note.empty { opacity: 0; color: var(--sud-accent); border-left-color: transparent; transition: opacity 0.12s; }
+.sud-mm-table tbody tr:hover .sud-mm-note.empty { opacity: 0.8; }
+.sud-mm-noteedit {
+  width: 100%; min-height: 44px; resize: vertical;
+  padding: 6px 8px; border-radius: 8px;
+  border: 1px solid var(--sud-accent); background: var(--sud-field); color: var(--body-text-color);
+  font-size: 13px; line-height: 1.35;
+}
+.sud-mm-catinput { font-size: 14px; }

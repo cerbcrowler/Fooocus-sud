@@ -73,7 +73,7 @@ def state(kind="CHECKPOINTS", current=None, message=""):
             status = "none"
         size = local.get(fname) or (job or {}).get("total") or cached_size(e.url)
         items.append({
-            "url": e.url, "file": fname, "title": e.display, "category": e.category,
+            "url": e.url, "file": fname, "title": e.display, "category": e.category, "note": e.note,
             "autoload": e.autoload, "star": e.star, "status": status, "size": size,
             "done": (job or {}).get("done", 0), "speed": (job or {}).get("speed", 0),
             "error": (job or {}).get("error", ""), "current": fname == current,
@@ -140,6 +140,8 @@ def apply(payload, current_model):
             cat.set_category(url, cmd.get("category", ""))
         elif op == "title":
             cat.set_title(url, cmd.get("title", ""))
+        elif op == "note":
+            cat.set_note(url, cmd.get("note", ""))
         elif op == "remove":
             cat.remove(url)
             msg = "Убрано из каталога (файл в Colab, если был, остался)"
