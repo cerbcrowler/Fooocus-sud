@@ -346,6 +346,16 @@ def sync(fooocus_dir, drive_base=None, hf_token=None):
         ("➕ WILDCARDS С GOOGLE DRIVE", "wildcards", p.wildcards, (".txt",), False),
     ):
         log(f"\n=== {title} ===")
+        # убрать ссылки на старые папки COLAB_MOUNTS/… (подключались раньше)
+        old = 0
+        for root, _, files in os.walk(dest):
+            for f in files:
+                fp = os.path.join(root, f)
+                if os.path.islink(fp) and paths.is_legacy(os.readlink(fp)):
+                    os.unlink(fp)
+                    old += 1
+        if old:
+            log(f"   🧹 Отключено из старых папок COLAB_MOUNTS: {old}")
         for src, skip, main in paths.sources(kind):
             if not os.path.isdir(src):
                 continue

@@ -55,6 +55,12 @@ cache              служебное (кэш окружения Python)
 """
 
 
+def is_legacy(target):
+    """Ссылка ведёт в старые папки COLAB_MOUNTS/… (их больше не подключаем)."""
+    t = os.path.normpath(target)
+    return t.startswith(os.path.normpath(os.path.join(DRIVE_ROOT, "COLAB_MOUNTS")) + os.sep)
+
+
 def drive_mounted():
     return os.path.isdir(DRIVE_ROOT)
 
@@ -105,10 +111,12 @@ def settings_file(name):
 
 def sources(kind):
     """Папки на Drive, откуда подключаются модели: [(папка, пропустить_подпапки, главная?)]."""
+    # старые папки COLAB_MOUNTS/… больше не подключаются (решение 2026-11-19: разбираю постепенно,
+    # в Fooocus видно только то, что уже перенесено в FOOOCUS-SUD)
     if kind == "loras":
-        return [(LORAS, set(), True), (LEGACY_LORAS, LEGACY_SKIP_DIRS, False)]
+        return [(LORAS, set(), True)]
     if kind == "embeddings":
-        return [(EMBEDDINGS, set(), True), (LEGACY_EMBEDDINGS, set(), False)]
+        return [(EMBEDDINGS, set(), True)]
     if kind == "checkpoints":
         return [(CHECKPOINTS, set(), True)]
     if kind == "wildcards":
