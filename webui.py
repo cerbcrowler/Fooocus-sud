@@ -31,6 +31,7 @@ import sud.ui_manager  # Fooocus-sud: менеджер моделей
 import sud.ui_presets  # Fooocus-sud: пресеты сэмплинга
 import sud.ui_translate  # Fooocus-sud: перевод промпта
 import sud.ui_embeddings  # Fooocus-sud: панель эмбеддингов
+import sud.ui_composition  # Fooocus-sud: Compose with boxes
 
 def get_task(*args):
     args = list(args)
@@ -598,6 +599,7 @@ with shared.gradio_root:
                                              value=modules.config.default_prompt_negative)
                 sud.ui_translate.wire(prompt, negative_prompt)  # Fooocus-sud: перевод промпта RU → EN
                 sud.ui_embeddings.wire()  # Fooocus-sud: панель 🧬 эмбеддингов у промпта
+                sud_composition = sud.ui_composition.build()  # Fooocus-sud: раскладка боксов (sud-composition.js)
                 seed_random = gr.Checkbox(label='Random', value=True)
                 image_seed = gr.Textbox(label='Seed', value=0, max_lines=1, visible=False) # workaround for https://github.com/gradio-app/gradio/issues/5354
 
@@ -1041,6 +1043,7 @@ with shared.gradio_root:
                   enhance_input_image, enhance_checkbox, enhance_uov_method, enhance_uov_processing_order,
                   enhance_uov_prompt_type]
         ctrls += enhance_ctrls
+        ctrls += [sud_composition]  # Fooocus-sud: всегда последним (AsyncTask.composition)
 
         def parse_meta(raw_prompt_txt, is_generating):
             loaded_json = None

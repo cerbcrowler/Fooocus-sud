@@ -155,6 +155,8 @@ class AsyncTask:
                     enhance_mask_invert
                 ])
         self.should_enhance = self.enhance_checkbox and (self.enhance_uov_method != disabled.casefold() or len(self.enhance_ctrls) > 0)
+        # Fooocus-sud: Compose with boxes — JSON раскладки, последний элемент ctrls (modules/composition.py)
+        self.composition = args.pop() if args else ''
         self.images_to_enhance_count = 0
         self.enhance_stats = {}
 
@@ -754,6 +756,45 @@ def worker():
                 t['uc'] = pipeline.clip_encode(texts=t['negative'], pool_top_k=t['negative_top_k'])
         return tasks, use_expansion, loras, current_progress
 
+    def apply_composition(async_task, tasks, goals, width, height, current_progress):
+        """Fooocus-sud: Compose with boxes — свой промпт в каждом боксе (attention couple)."""
+        from modules.composition import (CompositionError, active_boxes, parse_composition,
+                                         compose_conditioning, COMPOSITION_METHOD)
+        try:
+            composition = parse_composition(async_task.composition)
+        except CompositionError as e:
+            print(f'[Composition] Раскладка не прочиталась, пропускаю: {e}')
+            return
+        boxes = active_boxes(composition)
+        if not boxes:
+            return
+        skip = set(goals) & {'vary', 'upscale', 'inpaint'}
+        if skip:
+            print(f'[Composition] Отключена для {", ".join(sorted(skip))}: там картинка уже есть')
+            return
+        # русский текст в боксах — переводим (DeepL/Google, как перевод промпта); боксы не трогаем в UI
+        try:
+            from sud import translate as sud_tr, settings as sud_settings
+            engine = sud_settings.effective().get('sud_translate_engine', 'deepl')
+            for b in composition['boxes']:
+                if sud_tr.has_cyrillic(b['prompt']):
+                    tr, used, warn = sud_tr.translate_prompt(b['prompt'], engine)
+                    print(f'[Composition] Перевод ({used}{", " + warn if warn else ""}): {b["prompt"]} → {tr}')
+                    b['prompt'] = tr
+        except Exception as e:
+            print(f'[Composition] Не удалось перевести боксы: {e}')
+        progressbar(async_task, current_progress, 'Encoding composition boxes ...')
+        print(f'[Composition] {COMPOSITION_METHOD}: боксов {len(boxes)}, {width}x{height}')
+        for i, t in enumerate(tasks):
+            rng = random.Random(t['task_seed'])
+            local = dict(composition, boxes=[
+                dict(b, prompt=apply_arrays(apply_wildcards(b['prompt'], rng, i, async_task.read_wildcards_in_order), i))
+                for b in composition['boxes']])
+            for b in active_boxes(local):
+                print(f'[Composition]   {b["x"]:.2f},{b["y"]:.2f} {b["w"]:.2f}x{b["h"]:.2f} ×{b["strength"]}: {b["prompt"]}')
+            t['c'] = compose_conditioning(t['c'], local, width, height, pipeline.clip_encode,
+                                          t['positive'], t['positive_top_k'])
+
     def apply_freeu(async_task):
         print(f'FreeU is enabled!')
         pipeline.final_unet = core.apply_freeu(
@@ -1161,6 +1202,7 @@ def worker():
                                                          base_model_additional_loras, async_task.image_number,
                                                          async_task.disable_seed_increment, use_expansion, use_style,
                                                          use_synthetic_refiner, current_progress, advance_progress=True)
+            apply_composition(async_task, tasks, goals, width, height, current_progress)
 
         if len(goals) > 0:
             current_progress += 1

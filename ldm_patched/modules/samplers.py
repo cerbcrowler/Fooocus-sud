@@ -73,6 +73,12 @@ def get_area_and_mult(conds, x_in, timestep_in):
 
         patches['middle_patch'] = [gligen_patch]
 
+    # Fooocus-sud: Compose with boxes (modules/composition.py). Новый dict каждый раз —
+    # поэтому такой cond не склеивается в один батч с негативом (can_concat_cond).
+    if 'composition_attention' in conds:
+        patches = dict(patches or {})
+        patches['fooocus_composition'] = [conds['composition_attention']]
+
     cond_obj = collections.namedtuple('cond_obj', ['input_x', 'mult', 'conditioning', 'area', 'control', 'patches'])
     return cond_obj(input_x, mult, conditioning, area, control, patches)
 
@@ -208,6 +214,7 @@ def calc_cond_uncond_batch(model, cond, uncond, x_in, timestep, model_options):
                         cur_patches[p] = cur_patches[p] + patches[p]
                     else:
                         cur_patches[p] = patches[p]
+                transformer_options["patches"] = cur_patches  # Fooocus-sud: в оригинале результат терялся
             else:
                 transformer_options["patches"] = patches
 

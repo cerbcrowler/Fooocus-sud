@@ -516,28 +516,38 @@ class BasicTransformerBlock(nn.Module):
                 context_attn2 = n
             else:
                 context_attn2 = context
-            value_attn2 = None
-            if "attn2_patch" in transformer_patches:
-                patch = transformer_patches["attn2_patch"]
-                value_attn2 = context_attn2
-                for p in patch:
-                    n, context_attn2, value_attn2 = p(n, context_attn2, value_attn2, extra_options)
-
-            attn2_replace_patch = transformer_patches_replace.get("attn2", {})
-            block_attn2 = transformer_block
-            if block_attn2 not in attn2_replace_patch:
-                block_attn2 = block
-
-            if block_attn2 in attn2_replace_patch:
-                if value_attn2 is None:
+            def cross_attention(n, context_attn2):
+                value_attn2 = None
+                if "attn2_patch" in transformer_patches:
+                    patch = transformer_patches["attn2_patch"]
                     value_attn2 = context_attn2
-                n = self.attn2.to_q(n)
-                context_attn2 = self.attn2.to_k(context_attn2)
-                value_attn2 = self.attn2.to_v(value_attn2)
-                n = attn2_replace_patch[block_attn2](n, context_attn2, value_attn2, extra_options)
-                n = self.attn2.to_out(n)
+                    for p in patch:
+                        n, context_attn2, value_attn2 = p(n, context_attn2, value_attn2, extra_options)
+
+                attn2_replace_patch = transformer_patches_replace.get("attn2", {})
+                block_attn2 = transformer_block
+                if block_attn2 not in attn2_replace_patch:
+                    block_attn2 = block
+
+                if block_attn2 in attn2_replace_patch:
+                    if value_attn2 is None:
+                        value_attn2 = context_attn2
+                    n = self.attn2.to_q(n)
+                    context_attn2 = self.attn2.to_k(context_attn2)
+                    value_attn2 = self.attn2.to_v(value_attn2)
+                    n = attn2_replace_patch[block_attn2](n, context_attn2, value_attn2, extra_options)
+                    n = self.attn2.to_out(n)
+                else:
+                    n = self.attn2(n, context=context_attn2, value=value_attn2)
+                return n
+
+            # Fooocus-sud: Compose with boxes — свой текст для каждого бокса, смешивание по маскам
+            composition = transformer_patches.get("fooocus_composition")
+            if composition and not self.switch_temporal_ca_to_sa:
+                query = n
+                n = composition[0](lambda text: cross_attention(query, text), context_attn2, extra_options)
             else:
-                n = self.attn2(n, context=context_attn2, value=value_attn2)
+                n = cross_attention(n, context_attn2)
 
         if "attn2_output_patch" in transformer_patches:
             patch = transformer_patches["attn2_output_patch"]
@@ -601,6 +611,7 @@ class SpatialTransformer(nn.Module):
         if not isinstance(context, list):
             context = [context] * len(self.transformer_blocks)
         b, c, h, w = x.shape
+        transformer_options["spatial_shape"] = (h, w)  # Fooocus-sud: для масок композиции
         x_in = x
         x = self.norm(x)
         if not self.use_linear:
