@@ -11,6 +11,8 @@
     POST /sud/api/presets/order   {kind: sampling|loras, names: [...]} → новый порядок пресетов (Drive)
     POST /sud/api/presets         {kind, op: add|update|edit|delete, name, new?, note?, values?} → пресеты (Drive)
     POST /sud/api/upload          картинка (тело запроса) или {"from": key} → {"key"} для «Образцов» (Image Prompt)
+    GET  /sud/api/models?kind=    📦 менеджер моделей: каталог links.txt + файлы в Colab + загрузки (sud/ui_manager.py)
+    POST /sud/api/models          {op, kind, url?, file?, ...} — download|cancel|delete|autoload|category|title|note|remove|add|add_category
     GET  /sud/api/posebank        банк поз (Drive: settings/pose_bank.json, фото — settings/pose_photos/)
     POST /sud/api/posebank        {op: save|delete|reorder, name, new?, note?, people, w, h, photo?}
     POST /sud/api/pose            {op: detect, key} → позы с фото (DWPose); {op: render, poses, w, h} → {key} скелета
@@ -184,6 +186,28 @@ def _upload_path(key):
                 return bank
         return path
     return None
+
+
+_mm_running = set()   # ссылки, которые качались при прошлом опросе — закончилась загрузка → обновить списки Fooocus
+
+
+def _models(cmd):
+    import modules.config as C
+    from sud import ui_manager as UM
+    from sud.downloads import jobs
+    st, fx = UM.run(cmd, cmd.get("current"))
+    running = {u for u, j in jobs.all().items() if j.get("state") == "running"}
+    finished = _mm_running - running
+    _mm_running.clear()
+    _mm_running.update(running)
+    if fx["refresh"] or fx["select"] or finished:
+        try:
+            C.update_files()   # новые / удалённые файлы — в списки моделей и LoRA (как кнопка Refresh)
+            st["refreshed"] = True
+        except Exception as e:
+            print(f"[sud api] update_files: {e}")
+    st["select"] = fx["select"]
+    return st
 
 
 def _pose_photos_dir():
@@ -631,6 +655,13 @@ def _routes(app):
             return JSONResponse({"error": f"не получилось взять картинку: {e}"}, status_code=400)
         return JSONResponse({"key": key, "w": size[0], "h": size[1]})
 
+    async def models_get(request: Request):
+        return JSONResponse(_models({"op": "state", "kind": request.query_params.get("kind", "CHECKPOINTS"),
+                                     "current": request.query_params.get("current")}))
+
+    async def models_post(request: Request):
+        return JSONResponse(_models(await request.json()))
+
     async def posebank_get():
         from sud import presets as P
         return JSONResponse({"poses": P.POSES.load()})
@@ -789,6 +820,8 @@ def _routes(app):
     app.add_api_route("/sud/api/image/{key}", image, methods=["GET"])
     app.add_api_route("/sud/api/upload", upload, methods=["POST"])
     app.add_api_route("/sud/api/pose", pose, methods=["POST"])
+    app.add_api_route("/sud/api/models", models_get, methods=["GET"])
+    app.add_api_route("/sud/api/models", models_post, methods=["POST"])
     app.add_api_route("/sud/api/posebank", posebank_get, methods=["GET"])
     app.add_api_route("/sud/api/posebank", posebank_post, methods=["POST"])
     app.add_api_route("/sud/api/settings", settings_get, methods=["GET"])

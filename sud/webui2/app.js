@@ -16,6 +16,7 @@
         sun: '<path d="M12 12m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0"/><path d="M3 12h1m8 -9v1m8 8h1m-9 8v1m-6.4 -15.4l.7 .7m12.1 -.7l-.7 .7m0 11.4l.7 .7m-12.1 -.7l-.7 .7"/>',
         moon: '<path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z"/>',
         chev: '<path d="M6 9l6 6l6 -6"/>',
+        models: '<path d="M12 3l8 4.5l0 9l-8 4.5l-8 -4.5l0 -9l8 -4.5"/><path d="M12 12l8 -4.5"/><path d="M12 12l0 9"/><path d="M12 12l-8 -4.5"/>',
         poses: '<path d="M11 4a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M7 21l3 -4"/><path d="M16 21l-2 -4l-3 -3l1 -6"/><path d="M6 12l2 -3l4 -1l3 3l3 1"/>',
         settings: '<path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z"/><path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/>',
     };
@@ -903,6 +904,136 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
         else if (e.key === 'Escape') poseClose();
     });
 
+    // ---------- 📦 менеджер моделей: чекпоинты и LoRA (каталог links.txt на Drive, общий с классическим) ----------
+    const ALLC = '__all__', OUTC = '__outside__';
+    const MM = { kind: 'CHECKPOINTS', cat: ALLC, filter: 'all', q: '', data: null, adding: false, more: '', sure: '', newCat: false, timer: null, msg: '' };
+    const gbS = (b) => (b == null ? '—' : b >= 1073741824 ? (b / 1073741824).toFixed(1).replace('.', ',') + ' ГБ' : Math.round(b / 1048576) + ' МБ');
+    async function mmLoad(cmd) {
+        try {
+            const d = cmd ? await api('models', Object.assign({ kind: MM.kind, current: U.model }, cmd))
+                : await api(`models?kind=${MM.kind}&current=${encodeURIComponent(U.model || '')}`);
+            MM.data = d; if (d.message) MM.msg = d.message;
+            if (d.refreshed) refreshState().then(() => renderRight());
+        } catch (e) { MM.msg = '⚠️ ' + e.message; }
+        renderMM();
+        clearTimeout(MM.timer);
+        if (!$('#v-models').hidden && MM.data && MM.data.items.some((i) => i.status === 'downloading')) MM.timer = setTimeout(() => mmLoad(), 2000);
+    }
+    const mmKey = (it) => it.url || 'file:' + it.file;
+    function renderMM() {
+        const box = $('#mm'), D = MM.data;
+        if (!D) { box.innerHTML = '<div class="hint">Загружаю каталог…</div>'; return; }
+        const isL = MM.kind === 'LORAS', usedL = new Set((U.loras || []).map((l) => l[1]));
+        const items = D.items.map((it) => Object.assign({}, it, { current: isL ? usedL.has(it.file) : it.file === U.model }));
+        const catOf = (it) => (it.category == null ? OUTC : it.category);
+        const cnt = (k) => items.filter((it) => k === ALLC || catOf(it) === k).length;
+        const cats = [[ALLC, 'Все']].concat(D.categories.map((c) => [c, c || 'Без категории']));
+        if (items.some((it) => it.category == null)) cats.push([OUTC, 'Не в каталоге']);
+        const words = MM.q.toLowerCase().split(/\s+/).filter(Boolean);
+        const list = items.filter((it) => (MM.cat === ALLC || catOf(it) === MM.cat)
+            && (MM.filter === 'all' || (MM.filter === 'local' && it.status === 'local') || (MM.filter === 'star' && it.autoload) || (MM.filter === 'dl' && it.status === 'downloading'))
+            && words.every((w) => (it.title + ' ' + it.file + ' ' + (it.note || '')).toLowerCase().includes(w)));
+        const stars = items.filter((i) => i.autoload), starSize = stars.reduce((a, i) => a + (i.size || 0), 0);
+        const st = (it) => {
+            if (it.status === 'downloading') { const p = it.size ? Math.round(it.done / it.size * 100) : 0; return `<div class="mm-st dl">⬇ ${p}%${it.speed ? ' · ' + Math.round(it.speed / 1048576) + ' МБ/с' : ''}<span class="mm-pg"><i style="width:${p}%"></i></span></div>`; }
+            if (it.status === 'local') return `<span class="mm-st ${it.current ? 'cur' : 'ok'}">${it.current ? (isL ? '▶ в слоте' : '▶ текущая') : it.drive ? '☁ с Drive' : '✓ в Colab'}</span>`;
+            if (it.status === 'error') return `<span class="mm-st err" title="${esc(it.error)}">⚠ ошибка</span>`;
+            return '<span class="mm-st no">не загружена</span>';
+        };
+        const acts = (it) => {
+            const k = esc(mmKey(it)), b = [];
+            if (it.status === 'local' && !it.current) b.push(isL ? `<button class="btn-s acc" data-mm-use="${esc(it.file)}" title="Добавить в свободный слот LoRA">＋ в слот</button>` : `<button class="btn-s acc" data-mm-use="${esc(it.file)}" title="Сделать моделью для генерации">▶ включить</button>`);
+            if ((it.status === 'none' || it.status === 'error') && it.url) b.push(`<button class="btn-s acc" data-mm-op="download" data-k="${k}">⬇ скачать</button>`);
+            if (it.status === 'downloading') b.push(`<button class="btn-s" data-mm-op="cancel" data-k="${k}">✕ отмена</button>`);
+            if (it.status === 'local' && !it.drive) b.push(`<button class="btn-s danger${MM.sure === 'del:' + k ? ' sure' : ''}" data-mm-del="${k}" title="Удалить файл из Colab (в каталоге ссылка останется)">${MM.sure === 'del:' + k ? 'точно?' : '🗑'}</button>`);
+            if (it.url) b.push(`<button class="btn-s${MM.more === mmKey(it) ? ' on' : ''}" data-mm-more="${k}" title="Название, категория, заметка, убрать из каталога">⋯</button>`);
+            return b.join('');
+        };
+        const more = (it) => {
+            if (MM.more !== mmKey(it)) return '';
+            const k = esc(mmKey(it));
+            return `<div class="mm-more" data-k="${k}">
+                <label>Название <input type="text" data-mm-f="title" value="${esc(it.title)}" placeholder="${esc(it.file)}"></label>
+                <label>Категория <select data-mm-f="category">${D.categories.map((c) => `<option value="${esc(c)}"${c === it.category ? ' selected' : ''}>${esc(c || 'Без категории')}</option>`).join('')}</select></label>
+                <label class="wide">Заметка <input type="text" data-mm-f="note" value="${esc(it.note || '')}" placeholder="например: мой основной, для аниме…"></label>
+                <button class="btn-s danger${MM.sure === 'rm:' + k ? ' sure' : ''}" data-mm-rm="${k}" title="Строка исчезнет из links.txt; файл в Colab (если есть) останется">${MM.sure === 'rm:' + k ? 'точно убрать?' : 'убрать из каталога'}</button></div>`;
+        };
+        const rows = list.map((it) => `<div class="mm-r${it.current ? ' cur' : ''}">
+              ${it.url ? `<button class="mm-star${it.autoload ? ' on' : ''}" data-mm-star="${esc(mmKey(it))}" title="${it.autoload ? 'Качается при старте Colab — клик, чтобы не качать' : 'Качать при старте Colab'}">${it.autoload ? '★' : '☆'}</button>` : '<span class="mm-star none" title="Файла нет в каталоге links.txt">·</span>'}
+              <div class="mm-t"><b>${esc(it.title)}</b>${it.category ? `<span class="mm-cat">${esc(it.category)}</span>` : ''}<small>${esc(it.file)}${it.note ? ' · ' + esc(it.note) : ''}</small></div>
+              ${st(it)}<span class="mm-sz">${gbS(it.size)}</span><div class="mm-a">${acts(it)}</div></div>${more(it)}`).join('');
+        const disk = D.disk ? `<span class="mm-disk" title="Свободно ${gbS(D.disk.total - D.disk.used)}">диск Colab <span class="mb"><i style="width:${Math.round(D.disk.used / D.disk.total * 100)}%" class="${D.disk.used / D.disk.total > 0.9 ? 'hi' : ''}"></i></span> ${gbS(D.disk.used)} / ${gbS(D.disk.total)}</span>` : '';
+        box.innerHTML = `<div class="mm-top"><b>📦 Модели</b>
+              <span class="seg">${[['CHECKPOINTS', 'Чекпоинты'], ['LORAS', 'LoRA']].map(([k, t]) => `<button class="${MM.kind === k ? 'on' : ''}" data-mm-kind="${k}">${t}${MM.kind === k ? ' · ' + items.length : ''}</button>`).join('')}</span>
+              <span class="sp"></span>${disk}<button class="btn-s" data-mm-refresh title="Перечитать каталог и папки">⟳</button></div>
+            <div class="mm-body"><div class="mm-side">${cats.map(([k, t]) => `<button class="mm-c${MM.cat === k ? ' on' : ''}" data-mm-cat="${esc(k)}"><span>${esc(t)}</span><small>${cnt(k)}</small></button>`).join('')}
+                ${MM.newCat ? '<input type="text" class="mm-newcat" placeholder="Название, Enter">' : '<button class="mm-c add" data-mm-newcat>＋ категория</button>'}</div>
+              <div class="mm-main"><div class="mm-tools"><input type="text" class="mm-q" placeholder="Поиск по названию, файлу, заметке" value="${esc(MM.q)}">
+                <span class="seg">${[['all', 'Все'], ['local', 'В Colab'], ['star', '★ при старте'], ['dl', 'Качаются']].map(([k, t]) => `<button class="${MM.filter === k ? 'on' : ''}" data-mm-filter="${k}">${t}</button>`).join('')}</span>
+                <button class="btn-s acc" data-mm-add>＋ по ссылке</button></div>
+                ${MM.adding ? `<div class="mm-add"><input type="text" data-mm-a="url" placeholder="Ссылка на файл: https://huggingface.co/…/resolve/main/…safetensors или Civitai">
+                  <input type="text" data-mm-a="title" placeholder="Название (необязательно)">
+                  <select data-mm-a="category">${D.categories.map((c) => `<option value="${esc(c)}"${c === (MM.cat !== ALLC && MM.cat !== OUTC ? MM.cat : '') ? ' selected' : ''}>${esc(c || 'Без категории')}</option>`).join('')}</select>
+                  <label><input type="checkbox" data-mm-a="star"> ★ при старте</label><label><input type="checkbox" data-mm-a="download_now" checked> скачать сейчас</label>
+                  <button class="btn-s acc" data-mm-addgo>Добавить</button><button class="btn-s" data-mm-add>Отмена</button></div>` : ''}
+                ${MM.msg ? `<div class="mm-msg">${esc(MM.msg)}</div>` : ''}
+                <div class="mm-list">${rows || '<div class="hint" style="padding:12px">Ничего не нашлось</div>'}</div>
+                <div class="mm-foot"><span>При старте Colab грузится: <b>${stars.length}</b> · ${gbS(starSize)}</span><span title="${esc(D.catalog)}">каталог: ${esc(String(D.catalog).split('/').slice(-2).join('/'))}</span></div></div></div>`;
+        const nc = $('.mm-newcat'); if (nc) nc.focus();
+    }
+    const mmFind = (k) => MM.data.items.find((it) => mmKey(it) === k);
+    document.addEventListener('click', async (e) => {
+        const t = e.target.closest && e.target.closest('#mm button');
+        if (!t) return;
+        const d = t.dataset;
+        if (d.mmKind) { MM.kind = d.mmKind; MM.cat = ALLC; MM.more = ''; MM.msg = ''; MM.data = null; renderMM(); mmLoad(); }
+        else if (d.mmRefresh !== undefined) { MM.msg = ''; mmLoad({ op: 'state', refresh_models: true }); }
+        else if (d.mmCat !== undefined) { MM.cat = d.mmCat; renderMM(); }
+        else if (d.mmFilter) { MM.filter = d.mmFilter; renderMM(); }
+        else if (d.mmNewcat !== undefined) { MM.newCat = true; renderMM(); }
+        else if (d.mmAdd !== undefined) { MM.adding = !MM.adding; renderMM(); }
+        else if (d.mmAddgo !== undefined) {
+            const v = {}; document.querySelectorAll('[data-mm-a]').forEach((x) => { v[x.dataset.mmA] = x.type === 'checkbox' ? x.checked : x.value.trim(); });
+            if (!/^https?:\/\//.test(v.url)) { MM.msg = '⚠️ Нужна ссылка на файл (https://…)'; renderMM(); return; }
+            MM.adding = false; mmLoad(Object.assign({ op: 'add' }, v));
+        } else if (d.mmStar) { const it = mmFind(d.mmStar); mmLoad({ op: 'autoload', url: it.url, on: !it.autoload }); }
+        else if (d.mmOp) { mmLoad({ op: d.mmOp, url: mmFind(d.k).url }); }
+        else if (d.mmMore) { MM.more = MM.more === d.mmMore ? '' : d.mmMore; renderMM(); }
+        else if (d.mmDel || d.mmRm) {
+            const k = d.mmDel || d.mmRm, tag = (d.mmDel ? 'del:' : 'rm:') + k;
+            if (MM.sure !== tag) { MM.sure = tag; renderMM(); setTimeout(() => { if (MM.sure === tag) { MM.sure = ''; renderMM(); } }, 4000); return; }
+            MM.sure = ''; const it = mmFind(k);
+            mmLoad(d.mmDel ? { op: 'delete', file: it.file, url: it.url } : { op: 'remove', url: it.url });
+        } else if (d.mmUse) {
+            if (MM.kind === 'LORAS') {
+                if (U.loras.length >= SRV.lora_slots && !U.loras.some((l) => l[1] === 'None')) { MM.msg = `⚠️ Все ${SRV.lora_slots} слотов LoRA заняты — убери лишнюю на вкладке «Создать»`; renderMM(); return; }
+                const i = U.loras.findIndex((l) => l[1] === 'None');
+                if (i >= 0) U.loras[i] = [true, d.mmUse, 1]; else U.loras.push([true, d.mmUse, 1]);
+                if (!SRV.loras.includes(d.mmUse)) await refreshState();
+                save(); renderRight(); flash('LoRA в слоте'); renderMM();
+            } else {
+                if (!SRV.models.includes(d.mmUse)) await mmLoad({ op: 'state', refresh_models: true });
+                U.model = d.mmUse; save(); renderRight(); flash('Модель включена'); renderMM();
+            }
+        }
+    });
+    document.addEventListener('change', (e) => {
+        const t = e.target;
+        if (!t.closest || !t.closest('.mm-more') || !t.dataset.mmF) return;
+        const it = mmFind(t.closest('.mm-more').dataset.k);
+        mmLoad({ op: t.dataset.mmF, url: it.url, [t.dataset.mmF]: t.value });
+    });
+    document.addEventListener('input', (e) => {
+        if (e.target.classList && e.target.classList.contains('mm-q')) { MM.q = e.target.value; const pos = e.target.selectionStart; renderMM(); const q = $('.mm-q'); q.focus(); q.setSelectionRange(pos, pos); }
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.target.classList && e.target.classList.contains('mm-newcat')) {
+            if (e.key === 'Enter' && e.target.value.trim()) { MM.newCat = false; MM.cat = e.target.value.trim(); mmLoad({ op: 'add_category', category: e.target.value.trim() }); }
+            if (e.key === 'Escape') { MM.newCat = false; renderMM(); }
+        }
+        if (e.target.dataset && e.target.dataset.mmF && e.key === 'Enter') e.target.blur();
+    });
+
     // ---------- 📚 банк поз: свои позы на Drive (settings/pose_bank.json), правка в том же редакторе ----------
     const PB = { list: null, q: '', sure: '' };
     async function pbLoad(force) {
@@ -1546,9 +1677,10 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
     function switchView(v) {
         document.querySelectorAll('.nv[data-view]').forEach((b) => b.classList.toggle('on', b.dataset.view === v));
         $('#v-create').hidden = v !== 'create'; $('#v-gallery').hidden = v !== 'gallery'; $('#v-settings').hidden = v !== 'settings';
-        $('#v-poses').hidden = v !== 'poses';
+        $('#v-poses').hidden = v !== 'poses'; $('#v-models').hidden = v !== 'models';
+        if (v === 'models') mmLoad();
         if (v === 'poses') renderBank();
-        document.querySelector('.main').classList.toggle('wide', v === 'settings' || v === 'poses');   // справа карточки не нужны
+        document.querySelector('.main').classList.toggle('wide', ['settings', 'poses', 'models'].includes(v));   // справа карточки не нужны
         if (v === 'settings') settOpen();
     }
 

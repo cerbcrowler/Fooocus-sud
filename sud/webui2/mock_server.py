@@ -57,6 +57,12 @@ EMB = {"folder": "/content/drive/MyDrive/FOOOCUS-SUD/models/embeddings", "messag
                      ("old_sd15_emb", "OTHER", False, False, False), ("random_emb", "", False, False, None)]]}
 
 
+MMD = {"kind": "CHECKPOINTS", "categories": ["", "Реализм", "Illustrious"], "disk": {"used": 69e9, "total": 112e9}, "catalog": "/content/drive/MyDrive/FOOOCUS-SUD/links.txt", "message": "",
+       "items": [
+           {"url": "https://hf/a/NovaRealityILV91.safetensors", "file": "NovaRealityILV91.safetensors", "title": "NovaReality IL v9.1", "category": "Illustrious", "note": "мой основной", "autoload": True, "status": "local", "size": 6.9e9, "done": 0, "speed": 0, "error": "", "drive": False},
+           {"url": "https://hf/a/redcraftHybridH3A2A_illust3relustion.safetensors", "file": "redcraftHybridH3A2A_illust3relustion.safetensors", "title": "redcraft Hybrid", "category": "Реализм", "note": "", "autoload": True, "status": "local", "size": 6.6e9, "done": 0, "speed": 0, "error": "", "drive": False},
+           {"url": "https://hf/a/Juggernaut_XIII.safetensors", "file": "Juggernaut_XIII.safetensors", "title": "Juggernaut XIII", "category": "Реализм", "note": "", "autoload": False, "status": "none", "size": 6.6e9, "done": 0, "speed": 0, "error": "", "drive": False},
+           {"url": "", "file": "CyberRealisticXLPlay_V10.0_FP16.safetensors", "title": "CyberRealisticXLPlay_V10.0_FP16", "category": None, "note": "", "autoload": False, "status": "local", "size": 6.9e9, "done": 0, "speed": 0, "error": "", "drive": True}]}
 BANK = [{"name": "Стоит прямо", "note": "", "w": 1024, "h": 1024, "photo": None, "people": [{"body": [[.5, .2], [.5, .3], [.42, .31], [.38, .45], [.36, .58], [.58, .31], [.62, .45], [.64, .58],
           [.45, .58], [.44, .75], [.44, .92], [.55, .58], [.56, .75], [.56, .92], [.48, .19], [.52, .19], [.46, .2], [.54, .2]], "left_hand": None, "right_hand": None, "face": None}]}]
 SETT = {
@@ -130,6 +136,12 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, SETT)
         if p == "/sud/api/posebank":
             return self._send(200, {"poses": BANK})
+        if p == "/sud/api/models":
+            for x in MMD["items"]:
+                if x["status"] == "downloading":
+                    x["done"] = min(x["size"], x["done"] + x["size"] * 0.2); x["speed"] = 85e6
+                    if x["done"] >= x["size"]: x["status"] = "local"
+            return self._send(200, MMD)
         if p.startswith("/sud/api/image/"):
             return self._send(200, _svg(int(k) if (k := p.rsplit("/", 1)[-1]).isdigit() else int(k[1:9], 16)), "image/svg+xml")
         return self._send(404, {"error": "нет"})
@@ -167,6 +179,21 @@ class H(BaseHTTPRequestHandler):
                                                                                     [.45, .58], [.44, .75], [.44, .92], [.55, .58], [.56, .75], None, [.48, .19], [.52, .19], None, [.54, .2]],
                                                                            "left_hand": None, "right_hand": None, "face": None}]})
             return self._send(200, {"key": "u" + uuid.uuid4().hex[:16]})
+        if p == "/sud/api/models":
+            it = next((x for x in MMD["items"] if x["url"] and x["url"] == body.get("url")), None)
+            op = body.get("op")
+            if op == "download" and it: it.update(status="downloading", done=0)
+            elif op == "cancel" and it: it.update(status="none")
+            elif op == "autoload" and it: it["autoload"] = bool(body.get("on"))
+            elif op in ("title", "note", "category") and it: it[op] = body.get(op)
+            elif op == "remove" and it: MMD["items"].remove(it)
+            elif op == "delete":
+                x = next((x for x in MMD["items"] if x["file"] == body.get("file")), None)
+                if x: x["status"] = "none"
+            elif op == "add_category": MMD["categories"].append(body.get("category"))
+            elif op == "add": MMD["items"].append({"url": body["url"], "file": body["url"].rsplit("/", 1)[-1], "title": body.get("title") or body["url"].rsplit("/", 1)[-1], "category": body.get("category", ""), "note": "", "autoload": bool(body.get("star")), "status": "downloading" if body.get("download_now") else "none", "size": 6.6e9, "done": 0, "speed": 0, "error": "", "drive": False})
+            print("models:", op, body.get("url") or body.get("file") or "")
+            return self._send(200, dict(MMD, message="ok: " + str(op)))
         if p == "/sud/api/posebank":
             L, name, op = BANK, body.get("name"), body.get("op")
             if op == "delete":

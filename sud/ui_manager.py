@@ -22,8 +22,16 @@ FOOOCUS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 KINDS = {
     "CHECKPOINTS": {"title": "Чекпоинты", "folder": "checkpoints", "exts": (".safetensors", ".ckpt")},
-    # "LORAS": {"title": "LoRA", "folder": "loras", "exts": (".safetensors",)},   # следующий шаг
+    "LORAS": {"title": "LoRA", "folder": "loras", "exts": (".safetensors",)},
 }
+
+
+def _on_drive(path):
+    """Файл (или ссылка на него) физически лежит на Google Drive — удалять из менеджера нельзя."""
+    try:
+        return os.path.realpath(path).startswith("/content/drive/")
+    except OSError:
+        return False
 
 
 def _paths():
@@ -58,6 +66,7 @@ def state(kind="CHECKPOINTS", current=None, message=""):
     cat = _catalog()
     entries = cat.entries(kind)
     local = _local_files(kind)
+    drive = {rel for rel in local if _on_drive(os.path.join(_folder(kind), rel))}
     items, in_catalog = [], set()
     for e in entries:
         fname = e.filename
@@ -76,13 +85,13 @@ def state(kind="CHECKPOINTS", current=None, message=""):
             "url": e.url, "file": fname, "title": e.display, "category": e.category, "note": e.note,
             "autoload": e.autoload, "star": e.star, "status": status, "size": size,
             "done": (job or {}).get("done", 0), "speed": (job or {}).get("speed", 0),
-            "error": (job or {}).get("error", ""), "current": fname == current,
+            "error": (job or {}).get("error", ""), "current": fname == current, "drive": fname in drive,
         })
     for fname, size in sorted(local.items()):
         if fname not in in_catalog:
             items.append({"url": "", "file": fname, "title": os.path.splitext(os.path.basename(fname))[0],
                           "category": None, "autoload": False, "star": False, "status": "local", "size": size,
-                          "done": 0, "speed": 0, "error": "", "current": fname == current})
+                          "done": 0, "speed": 0, "error": "", "current": fname == current, "drive": fname in drive})
     fetch_sizes_bg([e.url for e in entries if not cached_size(e.url)])
     try:
         du = shutil.disk_usage(_folder(kind) if os.path.isdir(_folder(kind)) else FOOOCUS_DIR)
@@ -106,16 +115,30 @@ def _model_dropdown(select=None):
 
 
 def apply(payload, current_model):
+    """Классический интерфейс (скрытые поле + кнопка)."""
     try:
         cmd = json.loads(payload or "{}")
     except ValueError:
         cmd = {}
+    st, fx = run(cmd, current_model)
+    dropdown = gr.update()
+    if fx["select"]:
+        dropdown = _model_dropdown(select=fx["select"])
+    elif fx["refresh"]:
+        dropdown = _model_dropdown()
+    return json.dumps(st, ensure_ascii=False), dropdown
+
+
+def run(cmd, current_model=None):
+    """Команда менеджера → (состояние, {"refresh": обновить список моделей Fooocus, "select": имя файла}).
+    Без Gradio — общая для классического интерфейса и нового (/sud/api/models)."""
     op, kind = cmd.get("op", "state"), cmd.get("kind", "CHECKPOINTS")
     if kind not in KINDS:
         kind = "CHECKPOINTS"
     url = cmd.get("url", "")
     cat = _catalog()
-    msg, dropdown, current = "", gr.update(), current_model
+    msg, current = "", current_model
+    fx = {"refresh": False, "select": None}
 
     try:
         if op == "download":
@@ -129,11 +152,13 @@ def apply(payload, current_model):
         elif op == "delete":
             fname = cmd.get("file", "")
             full = os.path.normpath(os.path.join(_folder(kind), fname))
-            if fname and full.startswith(os.path.normpath(_folder(kind))) and os.path.lexists(full):
+            if fname and _on_drive(full):
+                msg = "⚠️ Этот файл лежит на Google Drive — удаляй его там, а не из Colab"
+            elif fname and full.startswith(os.path.normpath(_folder(kind))) and os.path.lexists(full):
                 os.remove(full)
                 jobs.forget(url)
                 msg = f"🗑 Удалено из Colab: {os.path.basename(fname)}"
-                dropdown = _model_dropdown()
+                fx["refresh"] = True
         elif op == "autoload":
             cat.set_autoload(url, bool(cmd.get("on")))
         elif op == "category":
@@ -163,15 +188,15 @@ def apply(payload, current_model):
         elif op == "select":
             fname = cmd.get("file", "")
             if fname in _local_files(kind):
-                dropdown = _model_dropdown(select=fname)
+                fx["select"] = fname
                 current = fname
                 msg = f"▶ Текущая модель: {os.path.splitext(os.path.basename(fname))[0]}"
         elif op == "state" and cmd.get("refresh_models"):
-            dropdown = _model_dropdown()
+            fx["refresh"] = True
     except Exception as ex:  # чтобы ошибка не роняла панель
         msg = f"❌ {ex}"
 
-    return json.dumps(state(kind, current, msg), ensure_ascii=False), dropdown
+    return state(kind, current, msg), fx
 
 
 def build(base_model):
