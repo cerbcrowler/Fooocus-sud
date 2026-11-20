@@ -57,6 +57,20 @@ def assert_model_integrity():
     return True
 
 
+def free_gpu_models():
+    """Fooocus-sud: выгрузить все модели из видеопамяти (смена чекпоинта, восстановление после OOM).
+    ControlNet-ы и пр. загрузятся заново при следующей генерации."""
+    global model_base, model_refiner, final_unet, final_clip, final_vae, final_refiner_unet, final_refiner_vae
+    import gc
+    import ldm_patched.modules.model_management as mm
+    model_base = core.StableDiffusionModel()
+    model_refiner = core.StableDiffusionModel()
+    final_unet = final_clip = final_vae = final_refiner_unet = final_refiner_vae = None
+    mm.unload_all_models()
+    gc.collect()
+    mm.soft_empty_cache(force=True)
+
+
 @torch.no_grad()
 @torch.inference_mode()
 def refresh_base_model(name, vae_name=None):
@@ -71,6 +85,7 @@ def refresh_base_model(name, vae_name=None):
     if model_base.filename == filename and model_base.vae_filename == vae_filename:
         return
 
+    free_gpu_models()  # Fooocus-sud: со --always-high-vram новая модель строится сразу на GPU — старую убрать заранее
     model_base = core.load_model(filename, vae_filename)
     print(f'Base model loaded: {model_base.filename}')
     print(f'VAE loaded: {model_base.vae_filename}')

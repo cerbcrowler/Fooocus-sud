@@ -1649,6 +1649,16 @@ def worker():
                     build_image_wall(task)
                 task.yields.append(['finish', task.results])
                 pipeline.prepare_text_encoder(async_call=True)
+            except torch.cuda.OutOfMemoryError:
+                # Fooocus-sud: не хватило видеопамяти — выгрузить всё, чтобы следующая генерация пошла с чистого листа
+                traceback.print_exc()
+                print('[Fooocus-sud] Не хватило видеопамяти: выгружаю модели, следующая генерация загрузит их заново')
+                try:
+                    pipeline.free_gpu_models()
+                    pipeline.loaded_ControlNets = {}
+                except Exception:
+                    traceback.print_exc()
+                task.yields.append(['finish', task.results])
             except:
                 traceback.print_exc()
                 task.yields.append(['finish', task.results])
