@@ -11,6 +11,8 @@
     POST /sud/api/presets/order   {kind: sampling|loras, names: [...]} → новый порядок пресетов (Drive)
     POST /sud/api/presets         {kind, op: add|update|edit|delete, name, new?, note?, values?} → пресеты (Drive)
     POST /sud/api/upload          картинка (тело запроса) или {"from": key} → {"key"} для «Образцов» (Image Prompt)
+    GET  /sud/api/posebank        банк поз (Drive: settings/pose_bank.json, фото — settings/pose_photos/)
+    POST /sud/api/posebank        {op: save|delete|reorder, name, new?, note?, people, w, h, photo?}
     POST /sud/api/pose            {op: detect, key} → позы с фото (DWPose); {op: render, poses, w, h} → {key} скелета
     GET  /sud/api/settings        ⚙️ настройки (как вкладка классического) + группы моделей для предзагрузки
     POST /sud/api/settings        {values: {...}} — сохранить (sud/settings.py → Drive, config.txt)
@@ -175,8 +177,55 @@ def _load_image(key):
 def _upload_path(key):
     key = str(key or "")
     if len(key) == 17 and key[0] == "u" and all(c in "0123456789abcdef" for c in key[1:]):
-        return os.path.join(UPLOADS, key + ".png")
+        path = os.path.join(UPLOADS, key + ".png")
+        if not os.path.isfile(path):   # фото из банка поз лежит на Drive и переживает новую сессию Colab
+            bank = os.path.join(_pose_photos_dir(), key + ".png")
+            if os.path.isfile(bank):
+                return bank
+        return path
     return None
+
+
+def _pose_photos_dir():
+    from sud import presets as P
+    return os.path.join(os.path.dirname(P.POSES.path()), "pose_photos")
+
+
+def _posebank(body):
+    """Банк поз: сохранить (новая / правка / переименование), удалить, порядок."""
+    import shutil
+    from sud import presets as P
+    op, name = body.get("op"), " ".join(str(body.get("name") or "").split())
+    if op == "delete":
+        return P.POSES.delete(name)
+    if op == "reorder":
+        return P.POSES.reorder([str(n) for n in body.get("names") or []])
+    if op != "save":
+        return "неизвестная команда"
+    people = []
+    for p in body.get("people") or []:
+        part = lambda v: None if not v else [None if q is None else [round(float(q[0]), 4), round(float(q[1]), 4)] for q in v]  # noqa: E731
+        people.append({"body": part(p.get("body")) or [None] * 18, "left_hand": part(p.get("left_hand")),
+                       "right_hand": part(p.get("right_hand")), "face": part(p.get("face"))})
+    if not people:
+        return "в позе нет ни одного человека"
+    photo = body.get("photo") or None
+    if photo:   # фото копируем на Drive рядом с банком (uploads в /content живут только до конца сессии)
+        src = _upload_path(photo)
+        if not src or not os.path.isfile(src):
+            photo = None
+        else:
+            dst = os.path.join(_pose_photos_dir(), photo + ".png")
+            if os.path.abspath(src) != os.path.abspath(dst):
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                shutil.copy2(src, dst)
+    values = {"people": people, "w": int(body.get("w") or 1024), "h": int(body.get("h") or 1024), "photo": photo,
+              "note": " ".join(str(body.get("note") or "").split())}
+    old = " ".join(str(body.get("old") or "").split())
+    if old and P.POSES.get(old) is not None:
+        err = P.POSES.rename(old, name) if old != name else ""
+        return err or P.POSES.update(name, values)
+    return P.POSES.add(name, values)
 
 
 def _save_upload(img):
@@ -582,6 +631,20 @@ def _routes(app):
             return JSONResponse({"error": f"не получилось взять картинку: {e}"}, status_code=400)
         return JSONResponse({"key": key, "w": size[0], "h": size[1]})
 
+    async def posebank_get():
+        from sud import presets as P
+        return JSONResponse({"poses": P.POSES.load()})
+
+    async def posebank_post(request: Request):
+        from sud import presets as P
+        try:
+            err = _posebank(await request.json())
+        except (TypeError, ValueError, KeyError) as e:
+            err = f"плохие данные: {e}"
+        if err:
+            return JSONResponse({"error": err}, status_code=400)
+        return JSONResponse({"ok": True, "poses": P.POSES.load()})
+
     async def settings_get():
         return JSONResponse(_settings_view())
 
@@ -726,6 +789,8 @@ def _routes(app):
     app.add_api_route("/sud/api/image/{key}", image, methods=["GET"])
     app.add_api_route("/sud/api/upload", upload, methods=["POST"])
     app.add_api_route("/sud/api/pose", pose, methods=["POST"])
+    app.add_api_route("/sud/api/posebank", posebank_get, methods=["GET"])
+    app.add_api_route("/sud/api/posebank", posebank_post, methods=["POST"])
     app.add_api_route("/sud/api/settings", settings_get, methods=["GET"])
     app.add_api_route("/sud/api/settings", settings_post, methods=["POST"])
     app.add_api_route("/sud/api/prefetch", prefetch, methods=["POST"])

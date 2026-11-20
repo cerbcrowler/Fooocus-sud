@@ -57,6 +57,8 @@ EMB = {"folder": "/content/drive/MyDrive/FOOOCUS-SUD/models/embeddings", "messag
                      ("old_sd15_emb", "OTHER", False, False, False), ("random_emb", "", False, False, None)]]}
 
 
+BANK = [{"name": "Стоит прямо", "note": "", "w": 1024, "h": 1024, "photo": None, "people": [{"body": [[.5, .2], [.5, .3], [.42, .31], [.38, .45], [.36, .58], [.58, .31], [.62, .45], [.64, .58],
+          [.45, .58], [.44, .75], [.44, .92], [.55, .58], [.56, .75], [.56, .92], [.48, .19], [.52, .19], [.46, .2], [.54, .2]], "left_hand": None, "right_hand": None, "face": None}]}]
 SETT = {
     "values": {"sud_info_plate": True, "sud_notify_sound": True, "sud_translate_engine": "deepl", "sud_auto_translate": True,
                "default_max_lora_number": 5, "default_loras_min_weight": -2, "default_loras_max_weight": 2,
@@ -126,6 +128,8 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, EMB)
         if p == "/sud/api/settings":
             return self._send(200, SETT)
+        if p == "/sud/api/posebank":
+            return self._send(200, {"poses": BANK})
         if p.startswith("/sud/api/image/"):
             return self._send(200, _svg(int(k) if (k := p.rsplit("/", 1)[-1]).isdigit() else int(k[1:9], 16)), "image/svg+xml")
         return self._send(404, {"error": "нет"})
@@ -163,6 +167,21 @@ class H(BaseHTTPRequestHandler):
                                                                                     [.45, .58], [.44, .75], [.44, .92], [.55, .58], [.56, .75], None, [.48, .19], [.52, .19], None, [.54, .2]],
                                                                            "left_hand": None, "right_hand": None, "face": None}]})
             return self._send(200, {"key": "u" + uuid.uuid4().hex[:16]})
+        if p == "/sud/api/posebank":
+            L, name, op = BANK, body.get("name"), body.get("op")
+            if op == "delete":
+                BANK[:] = [b for b in L if b["name"] != name]
+            elif op == "save":
+                old = body.get("old")
+                item = {k: body.get(k) for k in ("name", "note", "people", "w", "h", "photo")}
+                i = next((k for k, b in enumerate(L) if b["name"] == (old or None)), -1)
+                if i >= 0:
+                    L[i] = item
+                elif any(b["name"] == name for b in L):
+                    return self._send(400, {"error": f"Поза «{name}» уже есть"})
+                else:
+                    L.append(item)
+            return self._send(200, {"ok": True, "poses": BANK})
         if p == "/sud/api/settings":
             SETT["values"].update(body.get("values") or {})
             print("settings:", body.get("values"))

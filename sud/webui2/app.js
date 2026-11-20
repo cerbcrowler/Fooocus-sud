@@ -16,6 +16,7 @@
         sun: '<path d="M12 12m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0"/><path d="M3 12h1m8 -9v1m8 8h1m-9 8v1m-6.4 -15.4l.7 .7m12.1 -.7l-.7 .7m0 11.4l.7 .7m-12.1 -.7l-.7 .7"/>',
         moon: '<path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z"/>',
         chev: '<path d="M6 9l6 6l6 -6"/>',
+        poses: '<path d="M11 4a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M7 21l3 -4"/><path d="M16 21l-2 -4l-3 -3l1 -6"/><path d="M6 12l2 -3l4 -1l3 3l3 1"/>',
         settings: '<path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z"/><path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/>',
     };
     const svg = (n) => `<svg class="i" viewBox="0 0 24 24">${ICON[n]}</svg>`;
@@ -634,7 +635,9 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
     document.addEventListener('paste', (e) => {
         const f = [...(e.clipboardData || {}).files || []].find((x) => x.type.startsWith('image/'));
         if (!f) return;   // обычный текст — как всегда
-        e.preventDefault(); ipUpload(null, f);
+        e.preventDefault();
+        if (!$('#v-poses').hidden && !PS.open) { pbFromFile(f); return; }
+        ipUpload(null, f);
     });
 
     // ---------- 🦴 редактор позы для слота «Поза» (как javascript/sud-pose.js классического, но поверх /sud/api/pose) ----------
@@ -689,39 +692,65 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
         const g = pGhosts(p);
         for (let k = j; k !== undefined && !p.body[k]; k = P_PARENT[k]) if (g[k]) p.body[k] = [g[k][0], g[k][1]];
     }
-    async function poseOpen(slot, fresh) {
+    async function pDetect() {   // поза с фото PS.photo (DWPose на сервере)
+        PS.people = []; PS.busy = 'Ищу позу на фото… (первый раз ~минута: качаю DWPose)';
+        $('#pose').hidden = false; poseRender();
+        try {
+            const r = await api('pose', { op: 'detect', key: PS.photo });
+            PS.W = r.w; PS.H = r.h; PS.people = r.poses;
+            PS.msg = r.poses.length ? `Нашёл людей: ${r.poses.length}. Тяни суставы мышкой.` : 'На фото не нашлось людей — добавь шаблон.';
+        } catch (e) { PS.msg = 'Не получилось: ' + e.message; const im = new Image(); im.src = API + 'image/' + PS.photo; await im.decode().catch(() => {}); PS.W = im.naturalWidth || 1024; PS.H = im.naturalHeight || 1024; }
+        PS.busy = '';
+    }
+    async function poseOpen(slot, fresh) {   // режим «слот»: правка позы в образце
         const s = U.ip[slot];
-        Object.assign(PS, { open: true, slot, undo: [], redo: [], sel: 0, busy: '', msg: '', photo: null });
+        Object.assign(PS, { open: true, mode: 'slot', slot, undo: [], redo: [], sel: 0, busy: '', msg: '', photo: null, name: '', note: '', old: '' });
         if (fresh || !s || !s.key) {
             const [w, h] = arOf(U.aspect); PS.W = w; PS.H = h; PS.people = [pTpl('Стоит')];
         } else {
             PS.photo = s.src || s.key;
-            if (s.poses) { PS.people = pclone(s.poses); PS.W = s.pw; PS.H = s.ph; }
-            else {
-                PS.people = []; PS.busy = 'Ищу позу на фото… (первый раз ~минута: качаю DWPose)';
-                poseRender();
-                try {
-                    const r = await api('pose', { op: 'detect', key: PS.photo });
-                    PS.W = r.w; PS.H = r.h; PS.people = r.poses;
-                    PS.msg = r.poses.length ? `Нашёл людей: ${r.poses.length}. Тяни суставы мышкой.` : 'На фото не нашлось людей — добавь шаблон.';
-                } catch (e) { PS.msg = 'Не получилось: ' + e.message; const im = new Image(); im.src = API + 'image/' + PS.photo; await im.decode().catch(() => {}); PS.W = im.naturalWidth || 1024; PS.H = im.naturalHeight || 1024; }
-                PS.busy = '';
-            }
+            if (s.poses) { PS.people = pclone(s.poses); PS.W = s.pw; PS.H = s.ph; PS.name = s.bank || ''; } else await pDetect();
         }
-        $('#pose').hidden = false; poseRender();
+        $('#pose').hidden = false; poseRender(); pbLoad();
+    }
+    async function poseOpenBank(item, photo) {   // режим «банк»: правка позы из банка / новая
+        Object.assign(PS, { open: true, mode: 'bank', slot: -1, undo: [], redo: [], sel: 0, busy: '', msg: '', photo: null,
+            name: item ? item.name : '', note: item ? item.note || '' : '', old: item ? item.name : '' });
+        if (item) { PS.people = pclone(item.people); PS.W = item.w; PS.H = item.h; PS.photo = item.photo || null; }
+        else if (photo) { PS.photo = photo; await pDetect(); }
+        else { const [w, h] = arOf(U.aspect); PS.W = w; PS.H = h; PS.people = [pTpl('Стоит')]; }
+        $('#pose').hidden = false; poseRender(); pbLoad();
     }
     const poseClose = () => { PS.open = false; $('#pose').hidden = true; };
-    async function poseDone() {
+    async function poseToSlot(slot, src) {   // скелет → слот «Поза» (slot=null — первый свободный)
+        src = src || { people: PS.people, w: PS.W, h: PS.H, photo: PS.photo, name: PS.name };
+        const r = await api('pose', { op: 'render', poses: src.people, w: src.w, h: src.h, hands: PS.hands, face: PS.face });
+        if (slot == null || slot < 0) { slot = U.ip.findIndex((x) => !x || !x.key); if (slot < 0) slot = Math.min(U.ip.length, ipSlots()); if (slot >= ipSlots()) slot = ipSlots() - 1; }
+        const old = U.ip[slot] || {};
+        const [stop, weight] = old.type === 'OpenPose' ? [old.stop, old.weight] : ipDef('OpenPose');
+        while (U.ip.length < slot) U.ip.push(null);
+        U.ip[slot] = { key: r.key, type: 'OpenPose', stop, weight, src: src.photo || undefined, poses: pclone(src.people), pw: src.w, ph: src.h, bank: src.name || undefined };
+        U.ipOpen = true; U.ipOff = false; save(); renderIp();
+    }
+    async function poseDone(toSlot) {
         if (PS.busy) return;
         PS.busy = 'Рисую скелет…'; poseRender();
         try {
-            const r = await api('pose', { op: 'render', poses: PS.people, w: PS.W, h: PS.H, hands: PS.hands, face: PS.face });
-            const old = U.ip[PS.slot] || {};
-            const [stop, weight] = old.type === 'OpenPose' ? [old.stop, old.weight] : ipDef('OpenPose');
-            while (U.ip.length < PS.slot) U.ip.push(null);
-            U.ip[PS.slot] = { key: r.key, type: 'OpenPose', stop, weight, src: PS.photo || undefined, poses: pclone(PS.people), pw: PS.W, ph: PS.H };
-            U.ipOpen = true; U.ipOff = false; save(); renderIp(); poseClose(); flash('Поза в образце');
+            await poseToSlot(PS.mode === 'slot' ? PS.slot : null);
+            poseClose(); flash('Поза в образце');
+            if (PS.mode === 'bank' && toSlot) switchView('create');
         } catch (e) { PS.busy = ''; PS.msg = 'Не получилось: ' + e.message; poseRender(); }
+    }
+    async function poseSaveBank() {
+        const name = (PS.name || '').split(/\s+/).filter(Boolean).join(' ');
+        if (!name) { PS.msg = '⚠️ Впиши название позы — поле «название» вверху'; poseRender(); const n = $('[data-pose-name]'); if (n) n.focus(); return; }
+        if (!PS.people.length) { PS.msg = '⚠️ В позе нет людей'; poseRender(); return; }
+        try {
+            const r = await api('posebank', { op: 'save', name, old: PS.old, note: PS.note, people: PS.people, w: PS.W, h: PS.H, photo: PS.photo });
+            PB.list = r.poses; PS.old = name; PS.name = name; PS.msg = `★ Сохранено в банк поз: «${name}»`;
+            if (PS.mode === 'slot' && U.ip[PS.slot]) { U.ip[PS.slot].bank = name; save(); }
+            flash('Сохранено в банк'); poseRender(); if (!$('#v-poses').hidden) renderBank();
+        } catch (e) { PS.msg = '⚠️ ' + e.message; poseRender(); }
     }
     function pSvg() {
         const W = PS.W, H = PS.H, r = Math.max(W, H) / 110;
@@ -770,7 +799,13 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
             <label class="pchk"><input type="checkbox" data-pose-opt="hands"${PS.hands ? ' checked' : ''}> руки</label>
             <label class="pchk"><input type="checkbox" data-pose-opt="face"${PS.face ? ' checked' : ''}> лицо</label>
             ${PS.photo ? `<label class="pchk" title="Прозрачность фото">фото <input type="range" data-pose-op min="0" max="1" step="0.05" value="${PS.opacity}"></label>` : ''}
-            <span class="sp"></span><button class="tb" data-pose="close">Отмена</button><button class="gen small" data-pose="done">Готово → в образец</button></div>
+            <span class="sp"></span>
+            ${(PB.list || []).length ? `<select data-pose-frombank title="Взять позу из банка (заменит людей на холсте)"><option value="">📚 из банка…</option>${PB.list.map((b) => `<option>${esc(b.name)}</option>`).join('')}</select>` : ''}
+            <input type="text" class="pose-name" data-pose-name placeholder="название для банка" value="${esc(PS.name || '')}" maxlength="60">
+            <button class="tb" data-pose="bank" title="Сохранить позу в банк поз${PS.old ? ' (перезаписать «' + esc(PS.old) + '»)' : ''}">★ в банк</button>
+            <button class="tb" data-pose="close">${PS.mode === 'bank' ? 'Закрыть' : 'Отмена'}</button>
+            ${PS.mode === 'bank' ? '<button class="gen small" data-pose="toslot" title="Положить скелет в «Образцы» и перейти к генерации">⤒ в образец</button>'
+                : '<button class="gen small" data-pose="done">Готово → в образец</button>'}</div>
             <div class="pose-msg">${esc(PS.busy || PS.msg || 'Тяни суставы. Пунктир — суставы, которых не нашлось: потяни кружок, чтобы добавить, или «✚ достроить». Alt+клик — убрать сустав.')}</div>
             <div class="pose-stage"><div class="pose-frame">
                 ${PS.photo ? `<img src="${API}image/${PS.photo}" style="opacity:${PS.opacity}" alt="" draggable="false">` : ''}
@@ -818,6 +853,8 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
         const a = t.dataset.pose;
         if (a === 'close') poseClose();
         else if (a === 'done') poseDone();
+        else if (a === 'toslot') poseDone(true);
+        else if (a === 'bank') poseSaveBank();
         else if (a === 'undo' && PS.undo.length) { PS.redo.push(pclone(PS.people)); PS.people = PS.undo.pop(); PS.sel = Math.min(PS.sel, Math.max(0, PS.people.length - 1)); poseRender(); }
         else if (a === 'redo' && PS.redo.length) { PS.undo.push(pclone(PS.people)); PS.people = PS.redo.pop(); poseRender(); }
         else if (a === 'fill' && PS.people[PS.sel]) {
@@ -848,16 +885,96 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
             pSnap(); PS.people.push(pTpl(t.value, PS.people.length ? (PS.people.length % 2 ? 0.22 : -0.22) : 0)); PS.sel = PS.people.length - 1; poseRender();
         }
         if (t.dataset.poseOpt) { PS[t.dataset.poseOpt] = t.checked; poseRender(); }
+        if (t.dataset.poseFrombank !== undefined && t.value) {
+            const b = PB.list.find((x) => x.name === t.value);
+            if (b) { pSnap(); PS.people = pclone(b.people); PS.W = b.w; PS.H = b.h; if (b.photo && !PS.photo) PS.photo = b.photo; PS.sel = 0; PS.name = b.name; PS.msg = `Поза «${b.name}» из банка`; poseRender(); }
+        }
     });
     document.addEventListener('input', (e) => {
+        if (PS.open && e.target.dataset.poseName !== undefined) PS.name = e.target.value;
         if (PS.open && e.target.dataset.poseOp !== undefined) { PS.opacity = +e.target.value; const im = $('#pose .pose-frame img'); if (im) im.style.opacity = PS.opacity; }
     });
     document.addEventListener('keydown', (e) => {
+        if (PS.open && e.target.dataset && e.target.dataset.poseName !== undefined && e.key === 'Enter') { e.preventDefault(); poseSaveBank(); return; }
         if (!PS.open || ['INPUT', 'SELECT'].includes(e.target.tagName) && e.target.type !== 'checkbox' && e.target.type !== 'range') return;
         const k = e.key.toLowerCase();
         if ((e.ctrlKey || e.metaKey) && (k === 'z' || k === 'я')) { e.preventDefault(); $('[data-pose="undo"]').click(); }
         else if ((e.ctrlKey || e.metaKey) && (k === 'y' || k === 'н')) { e.preventDefault(); $('[data-pose="redo"]').click(); }
         else if (e.key === 'Escape') poseClose();
+    });
+
+    // ---------- 📚 банк поз: свои позы на Drive (settings/pose_bank.json), правка в том же редакторе ----------
+    const PB = { list: null, q: '', sure: '' };
+    async function pbLoad(force) {
+        if (PB.list && !force) return PB.list;
+        try { PB.list = (await api('posebank')).poses; } catch (e) { PB.list = PB.list || []; }
+        if (PS.open) poseRender();
+        return PB.list;
+    }
+    function pThumb(b) {   // скелет в SVG прямо из данных позы — картинки хранить не нужно
+        const W = b.w, H = b.h, r = Math.max(W, H) / 90;
+        let s = b.photo ? `<image href="${API}image/${b.photo}" x="0" y="0" width="${W}" height="${H}" opacity=".35" preserveAspectRatio="none"/>` : '';
+        (b.people || []).forEach((p) => {
+            const k = p.body || [];
+            P_LIMBS.forEach(([a, c], i) => { if (k[a - 1] && k[c - 1]) s += `<line x1="${k[a - 1][0] * W}" y1="${k[a - 1][1] * H}" x2="${k[c - 1][0] * W}" y2="${k[c - 1][1] * H}" stroke="${P_COL[i]}" stroke-width="${r}" stroke-linecap="round" stroke-opacity=".85"/>`; });
+            k.forEach((q, j) => { if (q) s += `<circle cx="${q[0] * W}" cy="${q[1] * H}" r="${r * 0.75}" fill="${P_COL[j]}"/>`; });
+        });
+        return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${s}</svg>`;
+    }
+    async function renderBank() {
+        const box = $('#pbank');
+        if (!PB.list) { box.innerHTML = '<div class="hint">Загружаю банк поз…</div>'; await pbLoad(true); }
+        const words = PB.q.toLowerCase().split(/\s+/).filter(Boolean);
+        const list = PB.list.filter((b) => words.every((w) => (b.name + ' ' + (b.note || '')).toLowerCase().includes(w)));
+        const cards = list.map((b) => `<div class="pb-card" data-pb="${esc(b.name)}">
+              <button class="pb-th" data-pb-edit="${esc(b.name)}" title="Открыть в редакторе">${pThumb(b)}</button>
+              <div class="pb-n" title="${esc(b.note || '')}">${esc(b.name)}<small>${b.people.length > 1 ? b.people.length + ' чел.' : ''}${b.photo ? ' · с фото' : ''}</small></div>
+              <div class="pb-b"><button class="btn-s" data-pb-slot="${esc(b.name)}" title="Положить в «Образцы» как позу">⤒ в образец</button>
+                <button class="btn-s" data-pb-dup="${esc(b.name)}" title="Копия">⧉</button>
+                <button class="btn-s danger${PB.sure === b.name ? ' sure' : ''}" data-pb-del="${esc(b.name)}" title="Удалить">${PB.sure === b.name ? 'точно?' : '🗑'}</button></div></div>`).join('');
+        box.innerHTML = `<div class="pb-top"><b>📚 Банк поз</b><span class="dim">${PB.list.length}</span>
+              <input type="text" class="pb-q" placeholder="Поиск по названию и заметке" value="${esc(PB.q)}">
+              <span class="sp"></span>
+              <button class="btn-s acc" data-pb-new="photo" title="Выбрать фото — поза найдётся сама">＋ с фото</button>
+              <button class="btn-s" data-pb-new="tpl" title="Пустой холст с шаблоном человека">＋ с нуля</button>
+              <input type="file" id="pb-file" accept="image/*" hidden></div>
+            <div class="hint pb-hint">Перетащи фото сюда или нажми Ctrl+V — поза найдётся, поправишь и сохранишь «★ в банк». В образце позу из банка можно взять кнопкой «📚 из банка…» в редакторе.</div>
+            <div class="pb-grid">${cards || `<div class="hint">${PB.list.length ? 'Ничего не нашлось' : 'Пока пусто — добавь первую позу'}</div>`}</div>`;
+    }
+    async function pbFromFile(f) {
+        try {
+            const res = await fetch(API + 'upload', { method: 'POST', headers: { 'Content-Type': f.type || 'application/octet-stream' }, body: f });
+            const r = await res.json(); if (!res.ok) throw new Error(r.error || res.status);
+            poseOpenBank(null, r.key);
+        } catch (e) { alert('Не получилось взять фото: ' + e.message); }
+    }
+    document.addEventListener('click', async (e) => {
+        const t = e.target.closest && e.target.closest('#pbank button');
+        if (!t) return;
+        const find = (n) => PB.list.find((b) => b.name === n);
+        if (t.dataset.pbEdit) poseOpenBank(find(t.dataset.pbEdit));
+        else if (t.dataset.pbNew === 'tpl') poseOpenBank(null);
+        else if (t.dataset.pbNew === 'photo') { const f = $('#pb-file'); f.onchange = () => { if (f.files[0]) pbFromFile(f.files[0]); }; f.click(); }
+        else if (t.dataset.pbSlot) {
+            const b = find(t.dataset.pbSlot);
+            try { await poseToSlot(null, { people: b.people, w: b.w, h: b.h, photo: b.photo, name: b.name }); flash(`«${b.name}» в образце`); switchView('create'); }
+            catch (er) { alert('Не получилось: ' + er.message); }
+        } else if (t.dataset.pbDup) {
+            const b = find(t.dataset.pbDup); let n = b.name + ' копия', k = 2;
+            while (find(n)) n = `${b.name} копия ${k++}`;
+            try { PB.list = (await api('posebank', Object.assign({ op: 'save' }, b, { name: n, old: '' }))).poses; renderBank(); } catch (er) { alert(er.message); }
+        } else if (t.dataset.pbDel) {
+            if (PB.sure !== t.dataset.pbDel) { PB.sure = t.dataset.pbDel; renderBank(); setTimeout(() => { if (PB.sure === t.dataset.pbDel) { PB.sure = ''; renderBank(); } }, 4000); return; }
+            PB.sure = '';
+            try { PB.list = (await api('posebank', { op: 'delete', name: t.dataset.pbDel })).poses; renderBank(); } catch (er) { alert(er.message); }
+        }
+    });
+    document.addEventListener('input', (e) => { if (e.target.classList && e.target.classList.contains('pb-q')) { PB.q = e.target.value; const pos = e.target.selectionStart; renderBank().then(() => { const q = $('.pb-q'); q.focus(); q.setSelectionRange(pos, pos); }); } });
+    document.addEventListener('dragover', (e) => { if (e.target.closest && e.target.closest('#v-poses') && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
+    document.addEventListener('drop', (e) => {
+        if (!e.target.closest || !e.target.closest('#v-poses') || PS.open) return;
+        const f = [...e.dataTransfer.files].find((x) => x.type.startsWith('image/'));
+        if (f) { e.preventDefault(); pbFromFile(f); }
     });
 
     // ---------- статус Colab наверху: видеопамять, память, сколько работает машина ----------
@@ -1429,7 +1546,9 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
     function switchView(v) {
         document.querySelectorAll('.nv[data-view]').forEach((b) => b.classList.toggle('on', b.dataset.view === v));
         $('#v-create').hidden = v !== 'create'; $('#v-gallery').hidden = v !== 'gallery'; $('#v-settings').hidden = v !== 'settings';
-        document.querySelector('.main').classList.toggle('wide', v === 'settings');   // справа карточки не нужны
+        $('#v-poses').hidden = v !== 'poses';
+        if (v === 'poses') renderBank();
+        document.querySelector('.main').classList.toggle('wide', v === 'settings' || v === 'poses');   // справа карточки не нужны
         if (v === 'settings') settOpen();
     }
 

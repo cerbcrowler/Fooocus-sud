@@ -114,6 +114,7 @@ class Store:
 
 
 SAMPLING = Store("sampling_presets.json")
+POSES = Store("pose_bank.json")   # банк поз: {name, note, people, w, h, photo}
 LORAS = Store("lora_presets.json")
 
 
