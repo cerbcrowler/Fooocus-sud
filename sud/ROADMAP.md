@@ -19,7 +19,7 @@
   - [ ] APG / CFG++ / PAG — меньше пересвета, больше деталей: `modules/guidance.py`
   - [ ] Quality 10 (AYS) — 10 шагов DPM++ 2M SDE без доп. модели
   - [ ] DeepCache / ToMeSD — ускорение: `modules/unet_cache.py`, `modules/tomesd.py`
-  - [ ] Tiled SDXL Detail Upscale 2.0: `modules/tiled_upscale.py`
+  - [x] Tiled SDXL Detail Upscale 2.0 (2026-11-20, только 2x, сила 0.35; дальше — 3x/4x): `modules/tiled_upscale.py`
   - не нужно: внешние API (fal/Replicate), SAM 3, torch.compile (в Colab кэш не живёт), свой перевод
 
 ## Сделано
