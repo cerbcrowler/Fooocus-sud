@@ -36,6 +36,11 @@
         <div class="empty" id="viewer-empty">Здесь появится картинка.<br><small>Ctrl+Enter — создать</small></div>
         <img id="viewer-img" alt="">
         <div class="tools" id="viewer-tools">
+          <button class="tb" data-action="upscale_tiled" title="Апскейл 2x плитками: детальнее, цвета как у исходника (~2.5 мин на T4)">2× Tiled</button>
+          <button class="tb" data-action="upscale" title="Обычный апскейл Fooocus 2x">2×</button>
+          <button class="tb" data-action="vary_subtle" title="Лёгкая вариация: то же, чуть по-другому">≈ вариация</button>
+          <button class="tb" data-action="vary_strong" title="Сильная вариация">≋ сильнее</button>
+          <button class="tb" data-action="faces" title="Enhance: найти лица и перерисовать каждое отдельно">☺ лица</button>
           <button class="tb" data-act="reuse-seed" title="Вернуть seed этой картинки">seed</button>
           <a class="tb" id="dl" download title="Скачать">⬇</a>
         </div>

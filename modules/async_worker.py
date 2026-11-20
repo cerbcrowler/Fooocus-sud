@@ -420,6 +420,13 @@ def worker():
         except Exception as e:
             print(f'[Plate] Не получилось нарисовать плашку: {e}')
         img_paths = save_and_log(async_task, height, imgs_to_save, task, use_expansion, width, loras, persist_image)
+        if imgs_to_save is not imgs:  # Fooocus-sud: с плашкой — запомнить чистые копии (апскейл/вариации из /sud/)
+            try:
+                from sud import plate
+                for saved, clean in zip(img_paths, imgs):
+                    plate.remember_clean(saved, clean)
+            except Exception as e:
+                print(f'[Plate] чистая копия не сохранилась: {e}')
         yield_result(async_task, img_paths, current_progress, async_task.black_out_nsfw, False,
                      do_not_show_finished_images=not show_intermediate_results or async_task.disable_intermediate_results)
 

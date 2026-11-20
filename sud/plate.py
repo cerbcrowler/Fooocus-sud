@@ -39,6 +39,27 @@ def _short(name):
     return base
 
 
+CLEAN = {}   # путь сохранённой картинки (с плашкой) → путь чистой копии (для апскейла/вариаций в /sud/)
+
+
+def remember_clean(saved_path, clean_img):
+    """Сохранить чистую (без плашки) копию рядом во временной папке и запомнить соответствие."""
+    import tempfile
+    import uuid
+    from PIL import Image
+    if not isinstance(saved_path, str):
+        return
+    path = os.path.join(tempfile.gettempdir(), f"sud_clean_{uuid.uuid4().hex}.png")
+    Image.fromarray(np.asarray(clean_img)).save(path)
+    CLEAN[saved_path] = path
+    while len(CLEAN) > 300:
+        old = CLEAN.pop(next(iter(CLEAN)))
+        try:
+            os.remove(old)
+        except OSError:
+            pass
+
+
 def lines_for(sampler, scheduler, steps, cfg, seed, model, loras, width, height, seconds=None, extra=None):
     l1 = f"{sampler} · {scheduler} · {steps} шагов · CFG {cfg:g} · seed {seed}"
     l2 = f"{_short(model)} · {width}×{height}" + (f" · {seconds:.1f} с" if seconds else "")

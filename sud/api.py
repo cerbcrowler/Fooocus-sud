@@ -33,6 +33,7 @@ _ctrls = []             # компоненты Gradio в порядке get_task
 _named = {}             # имя → компонент или список компонентов
 _tasks = {}             # id → dict
 _images = {}            # key → путь к файлу
+_clean = {}             # key → путь к чистой копии (если на картинке плашка)
 _lock = threading.Lock()
 _durations = []         # секунд на картинку — для оценки времени
 
@@ -67,6 +68,7 @@ def _build_args(p):
     put("composition", json.dumps(p["composition"]) if isinstance(p.get("composition"), dict) else p.get("composition"))
     put("camera", json.dumps(p["camera"]) if isinstance(p.get("camera"), dict) else p.get("camera"))
     put("styles", p.get("styles"))
+    _apply_action(p.get("action"), put)
 
     seed = p.get("seed")
     try:
@@ -85,7 +87,58 @@ def _build_args(p):
         values[id(lora_ctrls[i * 3])] = bool(on)
         values[id(lora_ctrls[i * 3 + 1])] = name or "None"
         values[id(lora_ctrls[i * 3 + 2])] = float(w)
+    values.update(_overrides)
+    _overrides.clear()
     return [values[id(c)] for c in _ctrls], seed
+
+
+# ---------------- действия над готовой картинкой (кнопки у картинки) ----------------
+ACTIONS = {
+    "upscale_tiled": ("uov", "Upscale (Tiled Detail 2x)"),
+    "upscale": ("uov", "Upscale (2x)"),
+    "vary_subtle": ("uov", "Vary (Subtle)"),
+    "vary_strong": ("uov", "Vary (Strong)"),
+    "faces": ("enhance", None),
+}
+
+
+def _load_image(key):
+    import numpy as np
+    from PIL import Image
+    path = _clean.get(key) or _images.get(key)
+    if not path or not os.path.isfile(path):
+        raise ValueError("картинки уже нет (Fooocus перезапускался?) — сгенерируй заново")
+    return np.array(Image.open(path).convert("RGB"))
+
+
+def _apply_action(action, put):
+    if not action:
+        return
+    kind = action.get("type")
+    if kind not in ACTIONS:
+        raise ValueError(f"неизвестное действие {kind}")
+    tab, uov = ACTIONS[kind]
+    img = _load_image(action.get("key"))
+    put("input_image", True)
+    put("current_tab", tab)
+    put("composition", '{"enabled": false, "boxes": []}')
+    put("camera", '{"enabled": false}')
+    if tab == "uov":
+        put("uov_method", uov)
+        put("uov_image", img)
+    else:
+        # Enhance #1: найти лица и перерисовать каждое отдельно (как ADetailer)
+        put("enhance", True)
+        put("enhance_image", img)
+        e = _named.get("enhance_ctrls") or []
+        if len(e) >= 17:
+            put_c = lambda c, v: _overrides.__setitem__(id(c), v)  # noqa: E731
+            put_c(e[0], True)       # Enable
+            put_c(e[1], "face")     # Detection prompt
+            put_c(e[16], True)      # Каждый объект отдельно
+
+
+_overrides = {}
 
 
 # ---------------- задачи ----------------
@@ -109,10 +162,18 @@ def _keep_image(item):
         path = os.path.join(tempfile.gettempdir(), f"sud_{uuid.uuid4().hex}.png")
         Image.fromarray(np.asarray(item)).save(path)
     key = uuid.uuid4().hex
+    try:
+        from sud import plate
+        if isinstance(item, str) and item in plate.CLEAN:
+            _clean[key] = plate.CLEAN[item]
+    except Exception:
+        pass
     with _lock:
         _images[key] = path
         while len(_images) > MAX_IMAGES:
-            old = _images.pop(next(iter(_images)))
+            k_old = next(iter(_images))
+            _clean.pop(k_old, None)
+            old = _images.pop(k_old)
             try:
                 os.remove(old)
             except OSError:
@@ -237,7 +298,10 @@ def _routes(app):
 
     async def generate(request: Request):
         p = await request.json()
-        rec = _new_task(p)
+        try:
+            rec = _new_task(p)
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
         return JSONResponse({"id": rec["id"], "seed": rec["seed"], "eta": _eta(int(p.get("image_number", 1)))})
 
     async def task(tid: str):

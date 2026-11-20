@@ -1173,7 +1173,9 @@ sud.api.install(ctrls, dict(
     aspect=aspect_ratios_selection, image_number=image_number, output_format=output_format, seed=image_seed,
     sharpness=sharpness, cfg=guidance_scale, base_model=base_model, sampler=sampler_name,
     scheduler=scheduler_name, steps=overwrite_step, composition=sud_composition, camera=sud_camera,
-    styles=style_selections, loras=lora_ctrls))
+    styles=style_selections, loras=lora_ctrls,
+    input_image=input_image_checkbox, current_tab=current_tab, uov_method=uov_method, uov_image=uov_input_image,
+    enhance=enhance_checkbox, enhance_image=enhance_input_image, enhance_ctrls=enhance_ctrls))
 
 shared.gradio_root.launch(
     inbrowser=args_manager.args.in_browser,

@@ -168,23 +168,23 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
         const eta = SRV && SRV.sec_per_image ? ` · ~${Math.round(SRV.sec_per_image * n)} с` : '';
         $('#gen-sub').textContent = `×${n}${eta}`;
     }
-    async function generate() {
+    async function generate(extra) {
         if (running) return;
-        const payload = {
+        const payload = Object.assign({
             prompt: $('#prompt').value, negative: $('#negative').value, model: U.model, loras: U.loras,
             sampler: U.sampler, scheduler: U.scheduler, steps: +U.steps, cfg: +U.cfg, sharpness: +U.sharpness,
             aspect: U.aspect, image_number: +U.image_number, output_format: U.output_format, performance: U.performance,
             seed: U.random ? null : U.seed, camera: U.camera,
-        };
+        }, extra || {});
         $('#btn-gen').disabled = true;
         try {
             const r = await api('generate', payload);
-            running = { id: r.id, seed: r.seed, prompt: payload.prompt };
-            if (!U.random) { U.seed = String(r.seed); save(); }
+            running = { id: r.id, seed: r.seed, prompt: payload.prompt, action: extra && extra.action && extra.action.type };
+            if (!U.random && !(extra && extra.action)) { U.seed = String(r.seed); save(); }
             $('#btn-stop').hidden = false;
             setProgress(0, 'В очереди…');
             poll();
-        } catch (e) { alert('Не получилось начать: ' + e.message); $('#btn-gen').disabled = false; }
+        } catch (e) { alert('Не получилось: ' + e.message); $('#btn-gen').disabled = false; }
     }
     async function poll() {
         if (!running) return;
@@ -193,7 +193,7 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
             setProgress(r.percent, r.title);
             if (r.preview) showImage(r.preview, null);
             if (r.done) {
-                const items = r.images.map((k, i) => ({ key: k, url: API + 'image/' + k, name: (r.names || [])[i], seed: r.seed, prompt: running.prompt }));
+                const items = r.images.map((k, i) => ({ key: k, url: API + 'image/' + k, name: (r.names || [])[i], seed: r.seed, prompt: running.prompt, action: running.action }));
                 saveToLaptop(items);
                 history = items.concat(history).slice(0, 60);
                 lsSet(LS_HIST, history);
@@ -254,6 +254,12 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
         if (t.dataset.loraDel !== undefined) { U.loras.splice(+t.dataset.loraDel, 1); save(); renderRight(); return; }
         if (t.dataset.act === 'lora-add') { U.loras.push([true, 'None', 1]); save(); renderRight(); return; }
         if (t.dataset.camAngle !== undefined) { U.camera.angle = U.camera.angle === t.dataset.camAngle ? '' : t.dataset.camAngle; U.camera.enabled = !!(U.camera.angle || U.camera.height || U.camera.shot); save(); renderRight(); return; }
+        if (t.dataset.action && current && !running) {
+            const a = t.dataset.action, keepSeed = a.startsWith('upscale') || a === 'faces';
+            generate({ action: { type: a, key: current.key }, prompt: current.prompt || $('#prompt').value, image_number: 1,
+                       seed: keepSeed ? current.seed : null });
+            return;
+        }
         if (t.dataset.act === 'reuse-seed' && current) { U.random = false; U.seed = String(current.seed); save(); renderRight(); return; }
         if (t.id === 'btn-gen') { generate(); return; }
         if (t.id === 'st-save') { onSaveButton(); return; }
@@ -421,7 +427,8 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
     function lbShow(src, i) {
         LB.i = i; LB.src = src;
         const it = i >= 0 ? history[i] : null;
-        $('#lb-info').textContent = it ? `${i + 1} / ${history.length} · seed ${it.seed} · ${it.prompt || ''}` : 'превью';
+        const ACT = { upscale_tiled: '2× Tiled', upscale: '2×', vary_subtle: 'вариация', vary_strong: 'сильная вариация', faces: 'лица' };
+        $('#lb-info').textContent = it ? `${i + 1} / ${history.length} · seed ${it.seed}${it.action ? ' · ' + ACT[it.action] : ''} · ${it.prompt || ''}` : 'превью';
         $('#lb-dl').href = it ? it.url : src; $('#lb-dl').style.display = it ? '' : 'none';
         lb.querySelectorAll('.lb-nav').forEach((b) => { b.hidden = i < 0 || history.length < 2; });
         lbImg.onload = () => { LB.w = lbImg.naturalWidth || 1; LB.h = lbImg.naturalHeight || 1; lbFit(); };
