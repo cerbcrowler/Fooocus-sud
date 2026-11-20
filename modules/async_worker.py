@@ -159,6 +159,7 @@ class AsyncTask:
         self.should_enhance = self.enhance_checkbox and (self.enhance_uov_method != disabled.casefold() or len(self.enhance_ctrls) > 0)
         # Fooocus-sud: Compose with boxes — JSON раскладки, последний элемент ctrls (modules/composition.py)
         self.composition = args.pop() if args else ''
+        self.camera = args.pop() if args else ''  # Fooocus-sud: карточка «Камера» (sud/camera.py)
         self.images_to_enhance_count = 0
         self.enhance_stats = {}
 
@@ -765,7 +766,7 @@ def worker():
         return steps, switch, width, height
 
     def process_prompt(async_task, prompt, negative_prompt, base_model_additional_loras, image_number, disable_seed_increment, use_expansion, use_style,
-                       use_synthetic_refiner, current_progress, advance_progress=False):
+                       use_synthetic_refiner, current_progress, advance_progress=False, use_camera=False):
         prompts = remove_empty_str([safe_str(p) for p in prompt.splitlines()], default='')
         negative_prompts = remove_empty_str([safe_str(p) for p in negative_prompt.splitlines()], default='')
         prompt = prompts[0]
@@ -802,6 +803,13 @@ def worker():
             task_rng = random.Random(task_seed)  # may bind to inpaint noise in the future
             task_prompt = apply_wildcards(prompt, task_rng, i, async_task.read_wildcards_in_order)
             task_prompt = apply_arrays(task_prompt, i)
+            if use_camera:  # Fooocus-sud: камера — добавка в конец промпта (до стилей, как в PR #1797)
+                from sud import camera as sud_camera
+                cam = sud_camera.build(async_task.camera)
+                if cam:
+                    task_prompt = f'{task_prompt}, {cam}' if task_prompt.strip() else cam
+                    if i == 0:
+                        print(f'[Camera] {cam}')
             task_negative_prompt = apply_wildcards(negative_prompt, task_rng, i, async_task.read_wildcards_in_order)
             task_extra_positive_prompts = [apply_wildcards(pmt, task_rng, i, async_task.read_wildcards_in_order) for pmt
                                            in
@@ -1329,7 +1337,8 @@ def worker():
             tasks, use_expansion, loras, current_progress = process_prompt(async_task, async_task.prompt, async_task.negative_prompt,
                                                          base_model_additional_loras, async_task.image_number,
                                                          async_task.disable_seed_increment, use_expansion, use_style,
-                                                         use_synthetic_refiner, current_progress, advance_progress=True)
+                                                         use_synthetic_refiner, current_progress, advance_progress=True,
+                                                         use_camera=True)
             apply_composition(async_task, tasks, goals, width, height, current_progress)
 
         if len(goals) > 0:

@@ -711,3 +711,38 @@ body.sud-drag-active, body.sud-drag-active * { user-select: none !important; cur
 /* ★ пресет LoRA, применяемый при открытии страницы */
 .sud-sp-star.on { display: inline-flex; color: #d79921; }
 .sud-sp-star.on .sud-ico { fill: currentColor; }
+
+/* ================= карточка «Камера» (javascript/sud-camera.js) ================= */
+.sud-cam-head { cursor: pointer; user-select: none; margin-bottom: 0 !important; }
+.sud-cam-sum { color: var(--body-text-color-subdued); }
+.sud-cam-sum.on { color: var(--sud-accent); }
+.sud-cam-chev { display: flex; color: var(--body-text-color-subdued); transition: transform 0.15s; }
+.sud-cam-card.sud-collapsed .sud-cam-chev { transform: rotate(-90deg); }
+.sud-cam-card.sud-collapsed .sud-cam-body { display: none; }
+.sud-cam-tg { display: inline-flex; align-items: center; margin-right: 4px; }
+.sud-cam-tg input { accent-color: var(--sud-accent); width: 15px; height: 15px; cursor: pointer; }
+.sud-cam-body { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+.sud-cam-top { display: flex; gap: 14px; align-items: center; }
+.sud-cam-dial { position: relative; width: 120px; height: 120px; flex: none; }
+.sud-cam-ring { position: absolute; inset: 14px; border: 1px dashed var(--border-color-primary); border-radius: 50%; }
+.sud-cam-who { position: absolute; left: 47px; top: 47px; width: 26px; height: 26px; border-radius: 50%; padding: 0;
+  border: 1.5px solid var(--body-text-color-subdued); background: var(--background-fill-secondary); cursor: pointer; }
+.sud-cam-who.on { border-color: var(--sud-accent); }
+.sud-cam-who .nose { position: absolute; left: 50%; bottom: -5px; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%;
+  background: var(--body-text-color-subdued); }   /* «нос» смотрит вниз — на зрителя */
+.sud-cam-dot { position: absolute; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 5px; padding: 0;
+  border: 1px solid var(--border-color-primary); background: var(--background-fill-secondary); cursor: pointer; transition: transform 0.1s; }
+.sud-cam-dot:hover { transform: scale(1.15); border-color: var(--sud-accent); }
+.sud-cam-dot.on { background: var(--sud-accent); border-color: var(--sud-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--sud-accent) 25%, transparent); }
+.sud-cam-side { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.sud-cam-lbl { font-size: 12px; color: var(--body-text-color-subdued); }
+.sud-cam-lbl b { color: var(--body-text-color); font-weight: 600; }
+.sud-cam-lbl output { color: var(--body-text-color); margin-left: 4px; }
+.sud-cam-w { width: 100%; accent-color: var(--sud-accent); }
+.sud-cam-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.sud-cam-chip { padding: 3px 9px; border-radius: 999px; border: 1px solid var(--sud-line); background: transparent;
+  color: var(--body-text-color); font-size: 12px; cursor: pointer; }
+.sud-cam-chip:hover { border-color: var(--border-color-primary); }
+.sud-cam-chip.on { border-color: var(--sud-accent); color: var(--sud-accent); background: var(--sud-field); }
+.sud-cam-prev { font-size: 11.5px; color: var(--body-text-color-subdued); line-height: 1.45; margin-top: 2px; }
+.sud-cam-prev code { font-size: 11px; color: var(--sud-accent); background: transparent; padding: 0; white-space: normal; }

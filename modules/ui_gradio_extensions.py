@@ -49,6 +49,7 @@ def javascript_html():
     head += f'<script type="text/javascript" src="{webpath("javascript/sud-notify.js")}"></script>\n'  # Fooocus-sud
     head += f'<script type="text/javascript" src="{webpath("javascript/sud-composition.js")}"></script>\n'  # Fooocus-sud
     head += f'<script type="text/javascript" src="{webpath("javascript/sud-pose.js")}"></script>\n'  # Fooocus-sud
+    head += f'<script type="text/javascript" src="{webpath("javascript/sud-camera.js")}"></script>\n'  # Fooocus-sud
     head += f'<script type="text/javascript" src="{webpath("javascript/sud-translate.js")}"></script>\n'  # Fooocus-sud
     head += f'<script type="text/javascript" src="{webpath("javascript/sud-embeddings.js")}"></script>\n'  # Fooocus-sud
 

@@ -33,6 +33,7 @@ import sud.ui_translate  # Fooocus-sud: перевод промпта
 import sud.ui_embeddings  # Fooocus-sud: панель эмбеддингов
 import sud.ui_composition  # Fooocus-sud: Compose with boxes
 import sud.ui_pose  # Fooocus-sud: редактор позы (OpenPose)
+import sud.ui_camera  # Fooocus-sud: карточка «Камера»
 
 def get_task(*args):
     args = list(args)
@@ -691,6 +692,7 @@ with shared.gradio_root:
                                          inputs=refiner_model, outputs=refiner_switch, show_progress=False, queue=False)
 
                 sud.ui_aspect.build(aspect_ratios_selection)  # Fooocus-sud: карточка «Разрешение»
+                sud_camera = sud.ui_camera.build()  # Fooocus-sud: карточка «Камера»
 
                 with gr.Group(elem_classes=['sud-card', 'sud-lora-card']):
                     gr.HTML(sud.ui_cards.head('LoRA', 'stack', [('lora-alloff', 'power', 'Выключить все')],
@@ -1052,6 +1054,7 @@ with shared.gradio_root:
                   enhance_uov_prompt_type]
         ctrls += enhance_ctrls
         ctrls += [sud_composition]  # Fooocus-sud: всегда последним (AsyncTask.composition)
+        ctrls += [sud_camera]  # Fooocus-sud: камера — после композиции (AsyncTask.camera)
 
         def parse_meta(raw_prompt_txt, is_generating):
             loaded_json = None
