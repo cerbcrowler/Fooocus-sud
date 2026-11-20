@@ -425,6 +425,11 @@ with shared.gradio_root:
                                                                        placeholder='Describe what you want to detect.',
                                                                        interactive=True,
                                                                        visible=modules.config.default_enhance_inpaint_mask_model == 'sam')
+                            enhance_separate_objects = gr.Checkbox(  # Fooocus-sud: как ADetailer
+                                label='Каждый объект отдельно',
+                                info='Каждое найденное лицо/руку перерисовывать по отдельности, в своём вырезе '
+                                     '(лица на заднем плане станут чёткими). Только для SAM, без Invert.',
+                                value=True, visible=modules.config.default_enhance_inpaint_mask_model == 'sam')
                             example_enhance_mask_dino_prompt_text = gr.Dataset(
                                 samples=modules.config.example_enhance_detection_prompts,
                                 label='Detection Prompt Quick List',
@@ -520,7 +525,8 @@ with shared.gradio_root:
                             enhance_inpaint_strength,
                             enhance_inpaint_respective_field,
                             enhance_inpaint_erode_or_dilate,
-                            enhance_mask_invert
+                            enhance_mask_invert,
+                            enhance_separate_objects
                         ]
 
                         enhance_inpaint_mode_ctrls += [enhance_inpaint_mode]
@@ -539,12 +545,12 @@ with shared.gradio_root:
 
                         enhance_mask_model.change(
                             lambda x: [gr.update(visible=x == 'u2net_cloth_seg')] +
-                                      [gr.update(visible=x == 'sam')] * 2 +
+                                      [gr.update(visible=x == 'sam')] * 3 +
                                       [gr.Dataset.update(visible=x == 'sam',
                                                          samples=modules.config.example_enhance_detection_prompts)],
                             inputs=enhance_mask_model,
                             outputs=[enhance_mask_cloth_category, enhance_mask_dino_prompt_text, sam_options,
-                                     example_enhance_mask_dino_prompt_text],
+                                     enhance_separate_objects, example_enhance_mask_dino_prompt_text],
                             queue=False, show_progress=False)
 
             switch_js = "(x) => {if(x){viewer_to_bottom(100);viewer_to_bottom(500);}else{viewer_to_top();} return x;}"

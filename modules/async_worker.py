@@ -136,6 +136,7 @@ class AsyncTask:
             enhance_inpaint_respective_field = args.pop()
             enhance_inpaint_erode_or_dilate = args.pop()
             enhance_mask_invert = args.pop()
+            enhance_separate_objects = args.pop()  # Fooocus-sud: каждый найденный объект отдельно
             if enhance_enabled:
                 self.enhance_ctrls.append([
                     enhance_mask_dino_prompt_text,
@@ -152,7 +153,8 @@ class AsyncTask:
                     enhance_inpaint_strength,
                     enhance_inpaint_respective_field,
                     enhance_inpaint_erode_or_dilate,
-                    enhance_mask_invert
+                    enhance_mask_invert,
+                    enhance_separate_objects
                 ])
         self.should_enhance = self.enhance_checkbox and (self.enhance_uov_method != disabled.casefold() or len(self.enhance_ctrls) > 0)
         # Fooocus-sud: Compose with boxes — JSON раскладки, последний элемент ctrls (modules/composition.py)
@@ -189,6 +191,7 @@ def worker():
     import modules.inpaint_worker as inpaint_worker
     import modules.constants as constants
     import modules.tiled_upscale as tiled_upscale  # Fooocus-sud: Tiled Detail Upscale
+    from modules.enhance_masks import prepare_enhance_masks, object_context_field  # Fooocus-sud
     import extras.ip_adapter as ip_adapter
     import extras.face_crop
     import fooocus_version
@@ -1488,7 +1491,7 @@ def worker():
                     break
 
             # inpaint for all other tabs
-            for enhance_mask_dino_prompt_text, enhance_prompt, enhance_negative_prompt, enhance_mask_model, enhance_mask_cloth_category, enhance_mask_sam_model, enhance_mask_text_threshold, enhance_mask_box_threshold, enhance_mask_sam_max_detections, enhance_inpaint_disable_initial_latent, enhance_inpaint_engine, enhance_inpaint_strength, enhance_inpaint_respective_field, enhance_inpaint_erode_or_dilate, enhance_mask_invert in async_task.enhance_ctrls:
+            for enhance_mask_dino_prompt_text, enhance_prompt, enhance_negative_prompt, enhance_mask_model, enhance_mask_cloth_category, enhance_mask_sam_model, enhance_mask_text_threshold, enhance_mask_box_threshold, enhance_mask_sam_max_detections, enhance_inpaint_disable_initial_latent, enhance_inpaint_engine, enhance_inpaint_strength, enhance_inpaint_respective_field, enhance_inpaint_erode_or_dilate, enhance_mask_invert, enhance_separate_objects in async_task.enhance_ctrls:
                 current_task_id += 1
                 current_progress = int(base_progress + (100 - preparation_steps) / float(all_steps) * (done_steps_upscaling + done_steps_inpainting))
                 progressbar(async_task, current_progress, f'Preparing enhancement {current_task_id + 1}/{total_count} ...')
@@ -1502,7 +1505,9 @@ def worker():
                 elif enhance_mask_model == 'u2net_cloth_seg':
                     extras['cloth_category'] = enhance_mask_cloth_category
 
-                mask, dino_detection_count, sam_detection_count, sam_detection_on_mask_count = generate_mask_from_image(
+                request_instances = (enhance_separate_objects and enhance_mask_model == 'sam'
+                                     and not enhance_mask_invert and not async_task.debugging_dino)
+                mask, dino_detection_count, sam_detection_count, sam_detection_on_mask_count, instance_masks = generate_mask_from_image(
                     img, mask_model=enhance_mask_model, extras=extras, sam_options=SAMOptions(
                         dino_prompt=enhance_mask_dino_prompt_text,
                         dino_box_threshold=enhance_mask_box_threshold,
@@ -1511,21 +1516,20 @@ def worker():
                         dino_debug=async_task.debugging_dino,
                         max_detections=enhance_mask_sam_max_detections,
                         model_type=enhance_mask_sam_model,
-                    ))
-                if len(mask.shape) == 3:
-                    mask = mask[:, :, 0]
-
-                if int(enhance_inpaint_erode_or_dilate) != 0:
-                    mask = erode_or_dilate(mask, enhance_inpaint_erode_or_dilate)
-
-                if enhance_mask_invert:
-                    mask = 255 - mask
+                    ), return_instances=True)
+                # Fooocus-sud: «каждый объект отдельно» — своя маска и свой вырез на каждое лицо/руку
+                separate_objects = bool(request_instances and len(instance_masks) > 1)
+                object_masks = prepare_enhance_masks(
+                    mask, instance_masks if separate_objects else [], separate_objects, invert=enhance_mask_invert,
+                    transform=(lambda value: erode_or_dilate(value, enhance_inpaint_erode_or_dilate))
+                    if int(enhance_inpaint_erode_or_dilate) != 0 else None)
 
                 if async_task.debugging_enhance_masks_checkbox:
-                    async_task.yields.append(['preview', (current_progress, 'Loading ...', mask)])
-                    yield_result(async_task, mask, current_progress, async_task.black_out_nsfw, False,
-                                 async_task.disable_intermediate_results)
-                    async_task.enhance_stats[index] += 1
+                    for object_mask in object_masks:
+                        async_task.yields.append(['preview', (current_progress, 'Loading ...', object_mask)])
+                        yield_result(async_task, object_mask, current_progress, async_task.black_out_nsfw, False,
+                                     async_task.disable_intermediate_results)
+                        async_task.enhance_stats[index] += 1
 
                 print(f'[Enhance] {dino_detection_count} boxes detected')
                 print(f'[Enhance] {sam_detection_count} segments detected in boxes')
@@ -1534,17 +1538,34 @@ def worker():
                 if enhance_mask_model == 'sam' and (dino_detection_count == 0 or not async_task.debugging_dino and sam_detection_on_mask_count == 0):
                     print(f'[Enhance] No "{enhance_mask_dino_prompt_text}" detected, skipping')
                     continue
+                if not object_masks:
+                    print('[Enhance] Mask is empty after processing, skipping')
+                    continue
+                if separate_objects:
+                    print(f'[Enhance] Каждый объект отдельно: {len(object_masks)}')
 
                 goals_enhance = ['inpaint']
 
                 try:
-                    current_progress, img, enhance_prompt_processed, enhance_negative_prompt_processed = process_enhance(
-                        all_steps, async_task, callback, controlnet_canny_path, controlnet_cpds_path,
-                        current_progress, current_task_id, denoising_strength, enhance_inpaint_disable_initial_latent,
-                        enhance_inpaint_engine, enhance_inpaint_respective_field, enhance_inpaint_strength,
-                        enhance_prompt, enhance_negative_prompt, final_scheduler_name, goals_enhance, height, img, mask,
-                        preparation_steps, enhance_steps, switch, tiled, total_count, use_expansion, use_style,
-                        use_synthetic_refiner, width, persist_image=persist_image)
+                    for object_index, object_mask in enumerate(object_masks):
+                        is_last_object = object_index == len(object_masks) - 1
+                        if len(object_masks) > 1:
+                            progressbar(async_task, current_progress,
+                                        f'Enhance: объект {object_index + 1}/{len(object_masks)} ...')
+                        respective_field = object_context_field(object_mask, enhance_inpaint_respective_field) \
+                            if separate_objects else enhance_inpaint_respective_field
+                        results_before = len(async_task.results)
+                        current_progress, img, enhance_prompt_processed, enhance_negative_prompt_processed = process_enhance(
+                            all_steps, async_task, callback, controlnet_canny_path, controlnet_cpds_path,
+                            current_progress, current_task_id, denoising_strength, enhance_inpaint_disable_initial_latent,
+                            enhance_inpaint_engine, respective_field, enhance_inpaint_strength,
+                            enhance_prompt, enhance_negative_prompt, final_scheduler_name, goals_enhance, height, img, object_mask,
+                            preparation_steps, enhance_steps, switch, tiled, total_count, use_expansion, use_style,
+                            use_synthetic_refiner, width, show_intermediate_results=is_last_object,
+                            persist_image=persist_image and is_last_object)
+                        if not is_last_object:
+                            # промежуточная картинка (после одного объекта) в галерею и на диск не идёт
+                            async_task.results = async_task.results[:results_before]
                     async_task.enhance_stats[index] += 1
 
                     if (should_process_enhance_uov and async_task.enhance_uov_processing_order == flags.enhancement_uov_after

@@ -44,13 +44,20 @@ def optimize_masks(masks: torch.Tensor) -> torch.Tensor:
 
 
 def generate_mask_from_image(image: np.ndarray, mask_model: str = 'sam', extras=None,
-                             sam_options: SAMOptions | None = SAMOptions) -> tuple[np.ndarray | None, int | None, int | None, int | None]:
+                             sam_options: SAMOptions | None = SAMOptions, return_instances=False):
+    # Fooocus-sud: return_instances=True — пятым элементом список масок по объектам (Enhance «каждый отдельно»)
+    result = _generate_mask_from_image(image, mask_model, extras, sam_options)
+    return result if return_instances else result[:4]
+
+
+def _generate_mask_from_image(image, mask_model='sam', extras=None, sam_options=SAMOptions):
+    instance_masks = []
     dino_detection_count = 0
     sam_detection_count = 0
     sam_detection_on_mask_count = 0
 
     if image is None:
-        return None, dino_detection_count, sam_detection_count, sam_detection_on_mask_count
+        return None, dino_detection_count, sam_detection_count, sam_detection_on_mask_count, instance_masks
 
     if extras is None:
         extras = {}
@@ -66,7 +73,7 @@ def generate_mask_from_image(image: np.ndarray, mask_model: str = 'sam', extras=
             **extras
         )
 
-        return result, dino_detection_count, sam_detection_count, sam_detection_on_mask_count
+        return result, dino_detection_count, sam_detection_count, sam_detection_on_mask_count, instance_masks
 
     detections, boxes, logits, phrases = default_groundingdino(
         image=image,
@@ -104,7 +111,7 @@ def generate_mask_from_image(image: np.ndarray, mask_model: str = 'sam', extras=
             draw = ImageDraw.Draw(debug_dino_image)
             for box in boxes.numpy():
                 draw.rectangle(box.tolist(), fill="white")
-            return np.array(debug_dino_image), dino_detection_count, sam_detection_count, sam_detection_on_mask_count
+            return np.array(debug_dino_image), dino_detection_count, sam_detection_count, sam_detection_on_mask_count, instance_masks
 
         transformed_boxes = sam_predictor.transform.apply_boxes_torch(boxes, image.shape[:2])
         masks, _, _ = sam_predictor.predict_torch(
@@ -123,8 +130,9 @@ def generate_mask_from_image(image: np.ndarray, mask_model: str = 'sam', extras=
             mask_tensor = masks[obj_ind][0]
             final_mask_tensor += mask_tensor
             sam_detection_on_mask_count += 1
+            instance_masks.append(((mask_tensor > 0).to('cpu').numpy().astype(np.uint8)) * 255)
 
     final_mask_tensor = (final_mask_tensor > 0).to('cpu').numpy()
     mask_image = np.dstack((final_mask_tensor, final_mask_tensor, final_mask_tensor)) * 255
     mask_image = np.array(mask_image, dtype=np.uint8)
-    return mask_image, dino_detection_count, sam_detection_count, sam_detection_on_mask_count
+    return mask_image, dino_detection_count, sam_detection_count, sam_detection_on_mask_count, instance_masks
