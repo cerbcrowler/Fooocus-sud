@@ -28,6 +28,7 @@ STATE = {
                  "sampler": "lcm", "scheduler": "sgm_uniform", "steps": 6, "cfg": 1.0, "sharpness": 5.0,
                  "aspect": "1024×1024", "performance": "Speed", "output_format": "png", "image_number": 1, "negative": ""},
     "auto_translate": True,
+    "sys": {"gpu": "Tesla T4", "vram_used": 9.6e9, "vram_total": 15.8e9, "ram_used": 7.1e9, "ram_total": 13.6e9, "uptime": 8000},
     "inpaint_modes": {"replace": {"strength": 1.0, "field": 0.618}, "detail": {"strength": 0.5, "field": 0.0}, "modify": {"strength": 1.0, "field": 0.0}},
     "ip": {"types": ["ImagePrompt", "PyraCanny", "CPDS", "OpenPose", "FaceSwap"], "slots": 4,
            "defaults": {"ImagePrompt": [0.5, 0.6], "FaceSwap": [0.9, 0.75], "PyraCanny": [0.5, 1.0], "CPDS": [0.5, 1.0], "OpenPose": [0.8, 0.9]}},
@@ -139,6 +140,12 @@ class H(BaseHTTPRequestHandler):
             if "from" in body:
                 return self._send(200, {"key": body["from"], "w": 1024, "h": 1024})
             return self._send(200, {"key": "u" + uuid.uuid4().hex[:16], "w": 800, "h": 600})
+        if p == "/sud/api/pose":
+            if body.get("op") == "detect":
+                return self._send(200, {"w": 1024, "h": 1024, "poses": [{"body": [[.5, .2], [.5, .3], [.42, .31], [.38, .45], None, [.58, .31], [.62, .45], [.64, .58],
+                                                                                    [.45, .58], [.44, .75], [.44, .92], [.55, .58], [.56, .75], None, [.48, .19], [.52, .19], None, [.54, .2]],
+                                                                           "left_hand": None, "right_hand": None, "face": None}]})
+            return self._send(200, {"key": "u" + uuid.uuid4().hex[:16]})
         if p == "/sud/api/presets":
             key = {"sampling": "sampling_presets", "loras": "lora_presets"}[body["kind"]]
             L, name, op = STATE[key], body.get("name"), body.get("op")

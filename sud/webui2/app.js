@@ -480,13 +480,14 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
         for (let i = 0; i < ipSlots(); i++) {
             const s = U.ip[i];
             if (!s || !s.key) {
-                slots.push(`<div class="ips empty" data-ip-drop="${i}"><button class="ip-add" data-ip-pick="${i}" title="Выбрать файл"><b>＋</b>перетащи фото,<br>Ctrl+V или клик</button></div>`);
+                slots.push(`<div class="ips empty" data-ip-drop="${i}"><button class="ip-add" data-ip-pick="${i}" title="Выбрать файл"><b>＋</b>перетащи фото,<br>Ctrl+V или клик</button><button class="ip-pose0" data-pose-new="${i}" title="Нарисовать позу с нуля (без фото)">🦴 поза с нуля</button></div>`);
                 continue;
             }
             const types = IP_T.map(([k, t, h]) => `<button class="pill${s.type === k ? ' on' : ''}" data-ip-type="${i}" data-v="${k}" title="${h}">${t}</button>`).join('');
             slots.push(`<div class="ips" data-ip-drop="${i}">
                 <div class="ip-th"><img src="${API}image/${s.key}" alt="" draggable="false" data-ip-img="${i}"><button class="x" data-ip-del="${i}" title="Убрать">✕</button></div>
                 <div class="pills ip-types">${types}</div>
+                ${s.type === 'OpenPose' ? `<button class="btn-s pose-edit" data-pose-open="${i}" title="Открыть редактор: найти позу на фото, подвинуть суставы, добавить людей">🦴 ${s.poses ? 'править позу' : 'поправить позу'}</button>` : ''}
                 <div class="row"><label>Сила</label><input type="range" data-ip-w="${i}" min="0" max="2" step="0.05" value="${s.weight}"><output>${(+s.weight).toFixed(2)}</output></div>
                 <div class="row"><label title="До какой доли шагов действует образец">До</label><input type="range" data-ip-s="${i}" min="0" max="1" step="0.05" value="${s.stop}"><output>${Math.round(s.stop * 100)}%</output></div></div>`);
         }
@@ -501,7 +502,7 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
         if (i == null || i < 0) { i = U.ip.findIndex((s) => !s || !s.key); if (i < 0) i = Math.min(U.ip.length, ipSlots()) - 1; if (i < 0) i = 0; }
         const old = U.ip[i], type = old && old.key ? old.type : 'ImagePrompt', [stop, weight] = old && old.key ? [old.stop, old.weight] : ipDef(type);
         while (U.ip.length < i) U.ip.push(null);
-        U.ip[i] = { key, type, stop, weight };
+        U.ip[i] = { key, type, stop, weight };   // новое фото — прежняя правка позы больше не относится к нему
         U.ipOpen = true; U.ipOff = false; save(); renderIp();
     }
     async function ipUpload(i, src) {   // src: File/Blob или {from: key}
@@ -524,8 +525,12 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
         if (t.dataset.ipOn !== undefined) { U.ipOff = !t.checked; save(); renderIp(); return; }
         if (t.dataset.ipDel !== undefined) { U.ip[+t.dataset.ipDel] = null; while (U.ip.length && !U.ip[U.ip.length - 1]) U.ip.pop(); save(); renderIp(); return; }
         if (t.dataset.ipType !== undefined) {
-            const s = U.ip[+t.dataset.ipType]; s.type = t.dataset.v; [s.stop, s.weight] = ipDef(s.type); save(); renderIp(); return;
+            const s = U.ip[+t.dataset.ipType];
+            if (s.type === 'OpenPose' && t.dataset.v !== 'OpenPose' && s.src) { s.key = s.src; delete s.src; delete s.poses; }   // уходим из «Позы» — обратно фото
+            s.type = t.dataset.v; [s.stop, s.weight] = ipDef(s.type); save(); renderIp(); return;
         }
+        if (t.dataset.poseOpen !== undefined) { poseOpen(+t.dataset.poseOpen); return; }
+        if (t.dataset.poseNew !== undefined) { poseOpen(+t.dataset.poseNew, true); return; }
         if (t.dataset.ipPick !== undefined) {
             const f = $('#ip-file'), i = +t.dataset.ipPick;
             f.onchange = () => { if (f.files[0]) ipUpload(i, f.files[0]); };
@@ -568,6 +573,210 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
         if (!f) return;   // обычный текст — как всегда
         e.preventDefault(); ipUpload(null, f);
     });
+
+    // ---------- 🦴 редактор позы для слота «Поза» (как javascript/sud-pose.js классического, но поверх /sud/api/pose) ----------
+    // OpenPose-18: 0 нос, 1 шея, 2-4 правая рука, 5-7 левая, 8-10 правая нога, 11-13 левая, 14-17 глаза/уши. Координаты — доли 0..1.
+    const P_LIMBS = [[2, 3], [2, 6], [3, 4], [4, 5], [6, 7], [7, 8], [2, 9], [9, 10], [10, 11], [2, 12], [12, 13], [13, 14], [2, 1], [1, 15], [15, 17], [1, 16], [16, 18]];
+    const P_COL = ['#ff0000', '#ff5500', '#ffaa00', '#ffff00', '#aaff00', '#55ff00', '#00ff00', '#00ff55', '#00ffaa', '#00ffff', '#00aaff', '#0055ff', '#0000ff', '#5500ff', '#aa00ff', '#ff00ff', '#ff00aa', '#ff0055'];
+    const P_PARENT = { 0: 1, 2: 1, 5: 1, 8: 1, 11: 1, 3: 2, 4: 3, 6: 5, 7: 6, 9: 8, 10: 9, 12: 11, 13: 12, 14: 0, 15: 0, 16: 0, 17: 0 };
+    const P_KIDS = {}; Object.entries(P_PARENT).forEach(([c, p]) => { (P_KIDS[p] = P_KIDS[p] || []).push(+c); });
+    const P_HAND = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [0, 9], [9, 10], [10, 11], [11, 12], [0, 13], [13, 14], [14, 15], [15, 16], [0, 17], [17, 18], [18, 19], [19, 20]];
+    const P_NAMES = ['нос', 'шея', 'правое плечо', 'правый локоть', 'правая кисть', 'левое плечо', 'левый локоть', 'левая кисть', 'правое бедро', 'правое колено', 'правая стопа', 'левое бедро', 'левое колено', 'левая стопа', 'правый глаз', 'левый глаз', 'правое ухо', 'левое ухо'];
+    const P_FLIP = [[2, 5], [3, 6], [4, 7], [8, 11], [9, 12], [10, 13], [14, 15], [16, 17]];
+    const P_TPL = {   // в пикселях квадрата 420
+        'Стоит': [[210, 92], [210, 130], [180, 132], [172, 190], [168, 245], [240, 132], [248, 190], [252, 245], [192, 240], [190, 320], [188, 395], [228, 240], [230, 320], [232, 395], [203, 86], [217, 86], [196, 92], [224, 92]],
+        'Руки вверх': [[210, 112], [210, 150], [180, 152], [168, 100], [160, 48], [240, 152], [252, 100], [260, 48], [192, 260], [190, 335], [188, 405], [228, 260], [230, 335], [232, 405], [203, 106], [217, 106], [196, 112], [224, 112]],
+        'Шаг': [[205, 92], [208, 130], [180, 134], [160, 185], [150, 235], [236, 130], [262, 180], [285, 220], [195, 240], [160, 310], [140, 385], [225, 240], [245, 318], [262, 392], [198, 86], [212, 86], [191, 92], [219, 92]],
+        'Сидит': [[210, 120], [210, 158], [180, 160], [168, 215], [190, 255], [240, 160], [252, 215], [232, 255], [192, 265], [130, 275], [120, 350], [228, 265], [290, 275], [300, 350], [203, 114], [217, 114], [196, 120], [224, 120]],
+    };
+    const PS = { open: false, slot: -1, photo: null, W: 1024, H: 1024, people: [], sel: 0, undo: [], redo: [], busy: '', msg: '',
+        kids: true, hands: true, face: true, opacity: 0.45, drag: null };
+    const pclone = (x) => JSON.parse(JSON.stringify(x));
+    const pSnap = () => { PS.undo.push(pclone(PS.people)); if (PS.undo.length > 60) PS.undo.shift(); PS.redo = []; };
+    function pTpl(name, dx = 0) {   // шаблон по центру кадра, рост ~80% высоты
+        const k = PS.H / 420 * 0.95, cx = PS.W / 2 + dx * PS.W, cy = PS.H * 0.04;
+        return { body: P_TPL[name].map(([x, y]) => [(cx + (x - 210) * k) / PS.W, (cy + y * k) / PS.H]), left_hand: null, right_hand: null, face: null };
+    }
+    function pGhost(p, j) {   // где показать недостающий сустав: по шаблону «Стоит» от шеи, в масштабе человека
+        const b = p.body, T = P_TPL['Стоит'];
+        let k = PS.H / 420 * 0.95;
+        const neck = b[1] ? [b[1][0] * PS.W, b[1][1] * PS.H] : null;
+        const hip = b[8] || b[11];
+        if (neck && hip) k = Math.hypot(neck[0] - hip[0] * PS.W, neck[1] - hip[1] * PS.H) / Math.hypot(T[1][0] - T[8][0], T[1][1] - T[8][1]);
+        const base = neck || [PS.W / 2, PS.H * 0.3];
+        return [(base[0] + (T[j][0] - T[1][0]) * k) / PS.W, (base[1] + (T[j][1] - T[1][1]) * k) / PS.H];
+    }
+    async function poseOpen(slot, fresh) {
+        const s = U.ip[slot];
+        Object.assign(PS, { open: true, slot, undo: [], redo: [], sel: 0, busy: '', msg: '', photo: null });
+        if (fresh || !s || !s.key) {
+            const [w, h] = arOf(U.aspect); PS.W = w; PS.H = h; PS.people = [pTpl('Стоит')];
+        } else {
+            PS.photo = s.src || s.key;
+            if (s.poses) { PS.people = pclone(s.poses); PS.W = s.pw; PS.H = s.ph; }
+            else {
+                PS.people = []; PS.busy = 'Ищу позу на фото… (первый раз ~минута: качаю DWPose)';
+                poseRender();
+                try {
+                    const r = await api('pose', { op: 'detect', key: PS.photo });
+                    PS.W = r.w; PS.H = r.h; PS.people = r.poses;
+                    PS.msg = r.poses.length ? `Нашёл людей: ${r.poses.length}. Тяни суставы мышкой.` : 'На фото не нашлось людей — добавь шаблон.';
+                } catch (e) { PS.msg = 'Не получилось: ' + e.message; const im = new Image(); im.src = API + 'image/' + PS.photo; await im.decode().catch(() => {}); PS.W = im.naturalWidth || 1024; PS.H = im.naturalHeight || 1024; }
+                PS.busy = '';
+            }
+        }
+        $('#pose').hidden = false; poseRender();
+    }
+    const poseClose = () => { PS.open = false; $('#pose').hidden = true; };
+    async function poseDone() {
+        if (PS.busy) return;
+        PS.busy = 'Рисую скелет…'; poseRender();
+        try {
+            const r = await api('pose', { op: 'render', poses: PS.people, w: PS.W, h: PS.H, hands: PS.hands, face: PS.face });
+            const old = U.ip[PS.slot] || {};
+            const [stop, weight] = old.type === 'OpenPose' ? [old.stop, old.weight] : ipDef('OpenPose');
+            while (U.ip.length < PS.slot) U.ip.push(null);
+            U.ip[PS.slot] = { key: r.key, type: 'OpenPose', stop, weight, src: PS.photo || undefined, poses: pclone(PS.people), pw: PS.W, ph: PS.H };
+            U.ipOpen = true; U.ipOff = false; save(); renderIp(); poseClose(); flash('Поза в образце');
+        } catch (e) { PS.busy = ''; PS.msg = 'Не получилось: ' + e.message; poseRender(); }
+    }
+    function pSvg() {
+        const W = PS.W, H = PS.H, r = Math.max(W, H) / 110;
+        let svgIn = '';
+        PS.people.forEach((p, pi) => {
+            const b = p.body, sel = pi === PS.sel;
+            P_LIMBS.forEach(([a, c], i) => { const k1 = b[a - 1], k2 = b[c - 1]; if (k1 && k2) svgIn += `<line x1="${k1[0] * W}" y1="${k1[1] * H}" x2="${k2[0] * W}" y2="${k2[1] * H}" stroke="${P_COL[i]}" stroke-opacity="${sel ? 0.75 : 0.4}" stroke-width="${r * 0.9}" stroke-linecap="round"/>`; });
+            if (PS.hands) [p.left_hand, p.right_hand].forEach((h) => { if (h) P_HAND.forEach(([a, c]) => { if (h[a] && h[c]) svgIn += `<line x1="${h[a][0] * W}" y1="${h[a][1] * H}" x2="${h[c][0] * W}" y2="${h[c][1] * H}" stroke="#7af" stroke-width="${r * 0.3}"/>`; }); });
+            if (PS.face && p.face) p.face.forEach((f) => { if (f) svgIn += `<circle cx="${f[0] * W}" cy="${f[1] * H}" r="${r * 0.22}" fill="#fff" fill-opacity=".7"/>`; });
+            b.forEach((k, j) => {
+                if (k) svgIn += `<circle class="pj${sel ? ' sel' : ''}" data-p="${pi}" data-j="${j}" cx="${k[0] * W}" cy="${k[1] * H}" r="${r}" fill="${P_COL[j]}"><title>${P_NAMES[j]} — тяни; Alt+клик или правый клик — убрать</title></circle>`;
+                else if (sel) { const g = pGhost(p, j); svgIn += `<circle class="pj ghost" data-p="${pi}" data-j="${j}" data-ghost="1" cx="${g[0] * W}" cy="${g[1] * H}" r="${r}" stroke="${P_COL[j]}"><title>${P_NAMES[j]} — нет на фото; потяни, чтобы добавить</title></circle>`; }
+            });
+        });
+        return svgIn;
+    }
+    function pFit() {   // кадр вписать в экран с сохранением пропорций
+        const st = $('#pose .pose-stage'), fr = $('#pose .pose-frame');
+        if (!st || !fr) return;
+        const r = st.getBoundingClientRect(), k = Math.min((r.width - 20) / PS.W, (r.height - 20) / PS.H);
+        fr.style.width = Math.floor(PS.W * k) + 'px'; fr.style.height = Math.floor(PS.H * k) + 'px';
+    }
+    window.addEventListener('resize', () => { if (PS.open) pFit(); });
+    function poseRender() {
+        const box = $('#pose');
+        if (!PS.open) return;
+        const W = PS.W, H = PS.H, svgIn = pSvg();
+        const people = PS.people.map((p, i) => `<button class="pill${i === PS.sel ? ' on' : ''}" data-pp="${i}">Человек ${i + 1}</button>`).join('');
+        box.innerHTML = `<div class="pose-bar">
+            <b>🦴 Поза</b><span class="pills">${people}</span>
+            <select data-pose-tpl title="Добавить человека по шаблону"><option value="">＋ человек…</option>${Object.keys(P_TPL).map((k) => `<option>${k}</option>`).join('')}</select>
+            ${PS.photo ? '<button class="tb" data-pose="detect" title="Найти позу на фото заново (правки пропадут)">🔍 найти на фото</button>' : ''}
+            <button class="tb" data-pose="flip" title="Отзеркалить выбранного человека">⇋</button>
+            <button class="tb" data-pose="del" title="Убрать выбранного человека"${PS.people.length ? '' : ' disabled'}>🗑</button>
+            <button class="tb" data-pose="undo" title="Отменить (Ctrl+Z)">↶</button><button class="tb" data-pose="redo" title="Вернуть (Ctrl+Y)">↷</button>
+            <label class="pchk" title="Тянуть сустав вместе со всем, что ниже (шея — весь человек)"><input type="checkbox" data-pose-opt="kids"${PS.kids ? ' checked' : ''}> с потомками</label>
+            <label class="pchk"><input type="checkbox" data-pose-opt="hands"${PS.hands ? ' checked' : ''}> руки</label>
+            <label class="pchk"><input type="checkbox" data-pose-opt="face"${PS.face ? ' checked' : ''}> лицо</label>
+            ${PS.photo ? `<label class="pchk" title="Прозрачность фото">фото <input type="range" data-pose-op min="0" max="1" step="0.05" value="${PS.opacity}"></label>` : ''}
+            <span class="sp"></span><button class="tb" data-pose="close">Отмена</button><button class="gen small" data-pose="done">Готово → в образец</button></div>
+            <div class="pose-msg">${esc(PS.busy || PS.msg || 'Тяни суставы. Пунктирные кружки — суставы, которых нет: потяни, чтобы добавить. Alt+клик — убрать сустав.')}</div>
+            <div class="pose-stage"><div class="pose-frame">
+                ${PS.photo ? `<img src="${API}image/${PS.photo}" style="opacity:${PS.opacity}" alt="" draggable="false">` : ''}
+                <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${svgIn}</svg></div></div>`;
+        pFit();
+    }
+    function pMove(pi, j, x, y) {
+        const p = PS.people[pi], b = p.body, old = b[j];
+        if (!old) { b[j] = [x, y]; return; }
+        const dx = x - old[0], dy = y - old[1];
+        const ids = [j], q = [j];
+        if (PS.kids) while (q.length) (P_KIDS[q.shift()] || []).forEach((c) => { ids.push(c); q.push(c); });
+        ids.forEach((i) => { if (b[i]) b[i] = [b[i][0] + dx, b[i][1] + dy]; });
+        const shift = (part) => part && part.map((k) => (k ? [k[0] + dx, k[1] + dy] : k));
+        if (ids.includes(4)) p.right_hand = shift(p.right_hand);
+        if (ids.includes(7)) p.left_hand = shift(p.left_hand);
+        if (ids.includes(0)) p.face = shift(p.face);
+    }
+    const posePt = (e) => { const r = $('#pose svg').getBoundingClientRect(); return [Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))]; };
+    document.addEventListener('pointerdown', (e) => {
+        if (!PS.open) return;
+        const c = e.target.closest && e.target.closest('circle.pj');
+        if (!c || e.button !== 0) return;
+        e.preventDefault();
+        const pi = +c.dataset.p, j = +c.dataset.j;
+        pSnap();
+        if (e.altKey && !c.dataset.ghost) { PS.people[pi].body[j] = null; poseRender(); return; }
+        PS.sel = pi;
+        if (c.dataset.ghost) PS.people[pi].body[j] = [+c.getAttribute('cx') / PS.W, +c.getAttribute('cy') / PS.H];
+        PS.drag = { pi, j };
+        poseRender();
+    });
+    document.addEventListener('contextmenu', (e) => {
+        const c = PS.open && e.target.closest && e.target.closest('circle.pj:not(.ghost)');
+        if (!c) return;
+        e.preventDefault(); pSnap(); PS.people[+c.dataset.p].body[+c.dataset.j] = null; poseRender();
+    });
+    document.addEventListener('pointermove', (e) => { if (PS.drag) { const [x, y] = posePt(e); pMove(PS.drag.pi, PS.drag.j, x, y); $('#pose svg').innerHTML = pSvg(); } });
+    document.addEventListener('pointerup', () => { PS.drag = null; });
+    document.addEventListener('click', async (e) => {
+        if (!PS.open) return;
+        const t = e.target.closest('button');
+        if (!t) return;
+        if (t.dataset.pp !== undefined) { PS.sel = +t.dataset.pp; poseRender(); return; }
+        const a = t.dataset.pose;
+        if (a === 'close') poseClose();
+        else if (a === 'done') poseDone();
+        else if (a === 'undo' && PS.undo.length) { PS.redo.push(pclone(PS.people)); PS.people = PS.undo.pop(); PS.sel = Math.min(PS.sel, Math.max(0, PS.people.length - 1)); poseRender(); }
+        else if (a === 'redo' && PS.redo.length) { PS.undo.push(pclone(PS.people)); PS.people = PS.redo.pop(); poseRender(); }
+        else if (a === 'del' && PS.people[PS.sel]) { pSnap(); PS.people.splice(PS.sel, 1); PS.sel = Math.max(0, PS.sel - 1); poseRender(); }
+        else if (a === 'flip' && PS.people[PS.sel]) {
+            pSnap();
+            const p = PS.people[PS.sel], xs = p.body.filter(Boolean).map((k) => k[0]), cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+            const fl = (part) => part && part.map((k) => (k ? [2 * cx - k[0], k[1]] : k));
+            p.body = fl(p.body); P_FLIP.forEach(([i, j]) => { [p.body[i], p.body[j]] = [p.body[j], p.body[i]]; });
+            [p.left_hand, p.right_hand] = [fl(p.right_hand), fl(p.left_hand)]; p.face = fl(p.face);
+            poseRender();
+        } else if (a === 'detect') {
+            PS.busy = 'Ищу позу на фото…'; poseRender();
+            try { const r = await api('pose', { op: 'detect', key: PS.photo }); pSnap(); PS.W = r.w; PS.H = r.h; PS.people = r.poses; PS.sel = 0; PS.msg = `Нашёл людей: ${r.poses.length}`; }
+            catch (er) { PS.msg = 'Не получилось: ' + er.message; }
+            PS.busy = ''; poseRender();
+        }
+    });
+    document.addEventListener('change', (e) => {
+        if (!PS.open) return;
+        const t = e.target;
+        if (t.dataset.poseTpl !== undefined && t.value) {
+            pSnap(); PS.people.push(pTpl(t.value, PS.people.length ? (PS.people.length % 2 ? 0.22 : -0.22) : 0)); PS.sel = PS.people.length - 1; poseRender();
+        }
+        if (t.dataset.poseOpt) { PS[t.dataset.poseOpt] = t.checked; poseRender(); }
+    });
+    document.addEventListener('input', (e) => {
+        if (PS.open && e.target.dataset.poseOp !== undefined) { PS.opacity = +e.target.value; const im = $('#pose .pose-frame img'); if (im) im.style.opacity = PS.opacity; }
+    });
+    document.addEventListener('keydown', (e) => {
+        if (!PS.open || ['INPUT', 'SELECT'].includes(e.target.tagName) && e.target.type !== 'checkbox' && e.target.type !== 'range') return;
+        const k = e.key.toLowerCase();
+        if ((e.ctrlKey || e.metaKey) && (k === 'z' || k === 'я')) { e.preventDefault(); $('[data-pose="undo"]').click(); }
+        else if ((e.ctrlKey || e.metaKey) && (k === 'y' || k === 'н')) { e.preventDefault(); $('[data-pose="redo"]').click(); }
+        else if (e.key === 'Escape') poseClose();
+    });
+
+    // ---------- статус Colab наверху: видеопамять, память, сколько работает машина ----------
+    function renderSys() {
+        const s = SRV && SRV.sys, el = $('#st-sys');
+        if (!s || !el) { if (el) el.innerHTML = ''; return; }
+        const gb = (b) => (b / 1073741824).toFixed(1);
+        const bar = (u, t) => `<span class="mb"><i style="width:${Math.min(100, Math.round(u / t * 100))}%" class="${u / t > 0.9 ? 'hi' : ''}"></i></span>`;
+        const parts = [];
+        if (s.vram_total) parts.push(`<span title="${esc(s.gpu || 'GPU')}: занято ${gb(s.vram_used)} из ${gb(s.vram_total)} ГБ видеопамяти">VRAM ${bar(s.vram_used, s.vram_total)} ${gb(s.vram_used)}/${gb(s.vram_total)}</span>`);
+        if (s.ram_total) parts.push(`<span title="Память машины Colab: ${gb(s.ram_used)} из ${gb(s.ram_total)} ГБ">RAM ${bar(s.ram_used, s.ram_total)} ${gb(s.ram_used)}/${gb(s.ram_total)}</span>`);
+        if (s.uptime) {
+            const h = Math.floor(s.uptime / 3600), m = Math.floor(s.uptime % 3600 / 60), warn = s.uptime > 10 * 3600;
+            parts.push(`<span class="${warn ? 'warn' : ''}" title="Сколько работает машина Colab. Бесплатный Colab отключает сессию максимум через ~12 ч (и раньше — при простое)${warn ? '. Скоро может отключить — сохрани нужное!' : ''}">⏱ ${h} ч ${String(m).padStart(2, '0')} мин</span>`);
+        }
+        el.innerHTML = parts.join('');
+    }
 
     // ---------- ✎ Inpaint: маска кистью поверх картинки, дорисовка краёв ----------
     const INP_MODES = [['replace', 'Заменить', 'Обычный inpaint: нарисовать в маске по промпту; стрелки — дорисовать края'],
@@ -1003,9 +1212,11 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
             SRV = await api('state');
             const st = $('#st-conn'); st.className = 'st ok'; st.lastElementChild.textContent = 'движок подключён';
             $('#st-queue').textContent = SRV.busy || SRV.queue ? `очередь: ${SRV.queue}` : '';
+            renderSys();
             return true;
         } catch (e) {
             const st = $('#st-conn'); st.className = 'st bad'; st.lastElementChild.textContent = 'движок недоступен — Colab запущен?';
+            if (SRV) SRV.sys = null; renderSys();
             return false;
         }
     }

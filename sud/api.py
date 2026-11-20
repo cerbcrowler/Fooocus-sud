@@ -11,6 +11,7 @@
     POST /sud/api/presets/order   {kind: sampling|loras, names: [...]} → новый порядок пресетов (Drive)
     POST /sud/api/presets         {kind, op: add|update|edit|delete, name, new?, note?, values?} → пресеты (Drive)
     POST /sud/api/upload          картинка (тело запроса) или {"from": key} → {"key"} для «Образцов» (Image Prompt)
+    POST /sud/api/pose            {op: detect, key} → позы с фото (DWPose); {op: render, poses, w, h} → {key} скелета
     GET  /sud/api/embeddings      эмбеддинги (папки, превью, избранное…), POST {op: fav|neg|used} — изменить
 
 Генерация идёт через ту же очередь, что кнопка Generate (modules.async_worker.async_tasks).
@@ -350,6 +351,30 @@ def _choices(c):
     return out
 
 
+def _sys():
+    """Видеопамять, память, сколько работает машина Colab (/proc/uptime ≈ с начала сессии)."""
+    out = {}
+    try:
+        import torch
+        if torch.cuda.is_available():
+            free, total = torch.cuda.mem_get_info()
+            out.update(gpu=torch.cuda.get_device_name(0), vram_used=total - free, vram_total=total)
+    except Exception:
+        pass
+    try:
+        mem = {}
+        with open("/proc/meminfo") as f:
+            for line in f:
+                k, v = line.split(":", 1)
+                mem[k] = int(v.split()[0]) * 1024
+        out.update(ram_used=mem["MemTotal"] - mem["MemAvailable"], ram_total=mem["MemTotal"])
+        with open("/proc/uptime") as f:
+            out["uptime"] = float(f.read().split()[0])
+    except Exception:
+        pass
+    return out
+
+
 def _auto_translate():
     try:
         from sud import settings as S
@@ -398,6 +423,7 @@ def _state():
         "busy": any(not r["done"] for r in _tasks.values()),
         "sec_per_image": _eta(1),
         "auto_translate": _auto_translate(),
+        "sys": _sys(),
         "inpaint_modes": {k: {"strength": v[3], "field": v[4]} for k, v in INPAINT_MODES.items()},
     }
 
@@ -478,6 +504,35 @@ def _routes(app):
             return JSONResponse({"error": f"не получилось взять картинку: {e}"}, status_code=400)
         return JSONResponse({"key": key, "w": size[0], "h": size[1]})
 
+    async def pose(request: Request):
+        import asyncio
+        body = await request.json()
+
+        def work():
+            import numpy as np
+            from extras import dwpose
+            if body.get("op") == "detect":
+                import modules.config
+                img = _load_image(body.get("key"))
+                h, w = img.shape[:2]
+                _, poses = dwpose.detect(img, *modules.config.downloading_dwpose())
+                return {"w": w, "h": h, "poses": [{k: (list(v) if v else None) for k, v in p.items()} for p in poses]}
+            if body.get("op") == "render":
+                w, h = int(body.get("w", 1024)), int(body.get("h", 1024))
+                clean = lambda part: None if not part or all(p is None for p in part) else [None if p is None else (float(p[0]), float(p[1])) for p in part]  # noqa: E731
+                poses = [{"body": clean(p.get("body")) or [None] * 18, "left_hand": clean(p.get("left_hand")),
+                          "right_hand": clean(p.get("right_hand")), "face": clean(p.get("face"))}
+                         for p in body.get("poses") or [] if not p.get("hidden")]
+                arr = dwpose.draw(poses, w, h, hands=bool(body.get("hands", True)), face=bool(body.get("face", True)))
+                key, _ = _save_upload(np.asarray(arr))
+                return {"key": key}
+            raise ValueError("неизвестная команда")
+        try:
+            return JSONResponse(await asyncio.get_running_loop().run_in_executor(None, work))
+        except Exception as e:
+            print(f"[sud api] поза: {e}")
+            return JSONResponse({"error": str(e)}, status_code=400)
+
     async def image(key: str):
         path = _images.get(key) or _upload_path(key)
         if not path or not os.path.isfile(path):
@@ -555,6 +610,7 @@ def _routes(app):
     app.add_api_route("/sud/api/task/{tid}/stop", stop, methods=["POST"])
     app.add_api_route("/sud/api/image/{key}", image, methods=["GET"])
     app.add_api_route("/sud/api/upload", upload, methods=["POST"])
+    app.add_api_route("/sud/api/pose", pose, methods=["POST"])
     app.add_api_route("/sud/api/translate", translate, methods=["POST"])
     app.add_api_route("/sud/api/presets/order", presets_order, methods=["POST"])
     app.add_api_route("/sud/api/presets", presets_edit, methods=["POST"])
