@@ -414,7 +414,8 @@ def worker():
             if plate.enabled():
                 # имя шедулера — как выбрано в интерфейсе (у lcm/tcd внутри Fooocus расписание sgm_uniform)
                 lines = plate.lines_for(async_task.sampler_name, async_task.scheduler_name, steps, float(async_task.cfg_scale),
-                                        task['task_seed'], async_task.base_model_name, loras, width, height,
+                                        task['task_seed'], async_task.base_model_name, loras,
+                                        *(imgs[0].shape[1::-1] if imgs and hasattr(imgs[0], 'shape') else (width, height)),  # реальный размер (outpaint, апскейл)
                                         time.perf_counter() - task_start)
                 imgs_to_save = [plate.draw(x, lines) for x in imgs]
         except Exception as e:
