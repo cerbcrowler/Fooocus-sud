@@ -229,7 +229,7 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
         if (t.matches('.ch') && t.parentElement.classList.contains('fold')) {
             const id = t.parentElement.dataset.card; U.closed[id] = !U.closed[id]; save(); t.parentElement.classList.toggle('closed'); return;
         }
-        if (t.dataset.h !== undefined) { select(history[+t.dataset.h]); if (!$('#v-gallery').hidden) switchView('create'); return; }
+        if (t.dataset.h !== undefined) { select(history[+t.dataset.h]); openLB(+t.dataset.h); return; }
         if (t.dataset.view) { switchView(t.dataset.view); return; }
         if (t.dataset.sp) {
             const p = SRV.sampling_presets.find((x) => x.name === t.dataset.sp);
@@ -305,6 +305,94 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
     document.addEventListener('keydown', (e) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); generate(); }
     });
+    // ---------- ширина правой панели (перетаскивание, запоминается) ----------
+    const RW_DEF = 300, RW_MIN = 240, RW_MAX = 640;
+    const setRW = (w) => { U.rightW = Math.round(Math.min(RW_MAX, Math.max(RW_MIN, w))); document.querySelector('.main').style.setProperty('--right-w', U.rightW + 'px'); };
+    $('#resizer').addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        const rz = e.currentTarget, x0 = e.clientX, w0 = U.rightW || RW_DEF;
+        rz.setPointerCapture(e.pointerId); rz.classList.add('on'); document.body.classList.add('resizing');
+        const move = (ev) => setRW(w0 + (x0 - ev.clientX));
+        const up = () => { rz.removeEventListener('pointermove', move); rz.classList.remove('on'); document.body.classList.remove('resizing'); save(); };
+        rz.addEventListener('pointermove', move);
+        rz.addEventListener('pointerup', up, { once: true });
+    });
+    $('#resizer').addEventListener('dblclick', () => { setRW(RW_DEF); save(); });
+
+    // ---------- просмотр на весь экран: колёсико — зум к курсору, тащить — двигать, ← → — листать ----------
+    const LB = { i: -1, src: '', scale: 1, x: 0, y: 0, w: 1, h: 1 };
+    const lb = $('#lb'), lbImg = $('#lb-img');
+    function lbApply() {
+        lbImg.style.transform = `translate(${LB.x}px, ${LB.y}px) scale(${LB.scale})`;
+        $('#lb-zoom').textContent = Math.round(LB.scale * 100) + '%';
+        lb.classList.toggle('pixel', LB.scale >= 3);
+    }
+    function lbFit() {
+        const vw = innerWidth, vh = innerHeight - 50;
+        LB.scale = Math.min(vw / LB.w, vh / LB.h);
+        LB.x = (vw - LB.w * LB.scale) / 2; LB.y = 50 + (vh - LB.h * LB.scale) / 2;
+        lbApply();
+    }
+    function lbZoomAt(cx, cy, scale) {
+        const fit = Math.min(innerWidth / LB.w, (innerHeight - 50) / LB.h);
+        scale = Math.min(16, Math.max(fit * 0.5, scale));
+        LB.x = cx - (cx - LB.x) * (scale / LB.scale); LB.y = cy - (cy - LB.y) * (scale / LB.scale);
+        LB.scale = scale; lbApply();
+    }
+    function lbShow(src, i) {
+        LB.i = i; LB.src = src;
+        const it = i >= 0 ? history[i] : null;
+        $('#lb-info').textContent = it ? `${i + 1} / ${history.length} · seed ${it.seed} · ${it.prompt || ''}` : 'превью';
+        $('#lb-dl').href = it ? it.url : src; $('#lb-dl').style.display = it ? '' : 'none';
+        lb.querySelectorAll('.lb-nav').forEach((b) => { b.hidden = i < 0 || history.length < 2; });
+        lbImg.onload = () => { LB.w = lbImg.naturalWidth || 1; LB.h = lbImg.naturalHeight || 1; lbFit(); };
+        lbImg.src = src;
+        if (lbImg.complete && lbImg.naturalWidth) lbImg.onload();
+    }
+    function openLB(i) { lb.hidden = false; lbShow(i >= 0 ? history[i].url : $('#viewer-img').src, i); }
+    function closeLB() { lb.hidden = true; lbImg.removeAttribute('src'); }
+    function lbStep(d) { if (LB.i < 0 || !history.length) return; const i = (LB.i + d + history.length) % history.length; select(history[i]); lbShow(history[i].url, i); }
+    $('#viewer-img').addEventListener('click', () => {
+        const i = current ? history.findIndex((h) => h.key === current.key) : -1;
+        openLB(running ? -1 : i);
+    });
+    lb.addEventListener('wheel', (e) => { e.preventDefault(); lbZoomAt(e.clientX, e.clientY, LB.scale * (e.deltaY < 0 ? 1.18 : 1 / 1.18)); }, { passive: false });
+    lb.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('.lb-bar, .lb-nav')) return;
+        e.preventDefault();
+        const x0 = e.clientX, y0 = e.clientY, px = LB.x, py = LB.y; let moved = false;
+        lb.setPointerCapture(e.pointerId); lb.classList.add('drag');
+        const move = (ev) => { const dx = ev.clientX - x0, dy = ev.clientY - y0; if (Math.abs(dx) + Math.abs(dy) > 3) moved = true; LB.x = px + dx; LB.y = py + dy; lbApply(); };
+        const up = (ev) => {
+            lb.removeEventListener('pointermove', move); lb.classList.remove('drag');
+            if (!moved && ev.target === lb) closeLB();   // клик по пустому фону — закрыть
+        };
+        lb.addEventListener('pointermove', move);
+        lb.addEventListener('pointerup', up, { once: true });
+    });
+    lb.addEventListener('dblclick', (e) => {
+        if (e.target.closest('.lb-bar, .lb-nav')) return;
+        const fit = Math.min(innerWidth / LB.w, (innerHeight - 50) / LB.h);
+        if (Math.abs(LB.scale - fit) < 0.01) lbZoomAt(e.clientX, e.clientY, 1); else lbFit();
+    });
+    lb.addEventListener('click', (e) => {
+        const a = e.target.closest('[data-lb]') && e.target.closest('[data-lb]').dataset.lb;
+        if (a === 'close') closeLB();
+        if (a === 'fit') lbFit();
+        if (a === 'one') lbZoomAt(innerWidth / 2, innerHeight / 2, 1);
+        if (a === 'prev') lbStep(-1);
+        if (a === 'next') lbStep(1);
+    });
+    addEventListener('resize', () => { if (!lb.hidden) lbFit(); });
+    document.addEventListener('keydown', (e) => {
+        if (lb.hidden) return;
+        if (e.key === 'Escape') closeLB();
+        else if (e.key === 'ArrowLeft') lbStep(-1);
+        else if (e.key === 'ArrowRight') lbStep(1);
+        else if (e.key === '0' || e.key === 'f') lbFit();
+        else if (e.key === '1') lbZoomAt(innerWidth / 2, innerHeight / 2, 1);
+    });
+
     $('#viewer-img').addEventListener('error', () => { if (current) { history = history.filter((h) => h.key !== current.key); lsSet(LS_HIST, history); renderStrip(); } });
 
     function switchView(v) {
@@ -326,6 +414,7 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
     }
     async function boot() {
         document.querySelectorAll('.nv').forEach((b) => { b.innerHTML = svg(b.dataset.icon || b.dataset.view); });
+        if (U.rightW) setRW(U.rightW);
         $('#btn-theme').innerHTML = svg(document.documentElement.dataset.theme === 'light' ? 'moon' : 'sun');
         $('#prompt').value = U.prompt; $('#negative').value = U.negative;
         $('#neg-row').hidden = !U.showNeg; $('#chip-neg').classList.toggle('on', U.showNeg);

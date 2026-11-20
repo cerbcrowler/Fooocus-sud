@@ -58,8 +58,22 @@
     <section class="center" id="v-gallery" hidden>
       <div class="gallery" id="gallery"></div>
     </section>
+    <div class="resizer" id="resizer" title="Потяни — ширина панели (двойной клик — по умолчанию)"></div>
     <aside class="right" id="right"></aside>
   </div>
+</div>
+<div class="lb" id="lb" hidden>
+  <img id="lb-img" alt="" draggable="false">
+  <div class="lb-bar">
+    <span id="lb-info"></span><span class="sp"></span>
+    <span id="lb-zoom">100%</span>
+    <button class="lb-b" data-lb="fit" title="Вписать (двойной клик)">⤢</button>
+    <button class="lb-b" data-lb="one" title="1:1 — пиксель в пиксель">1:1</button>
+    <a class="lb-b" id="lb-dl" download title="Скачать">⬇</a>
+    <button class="lb-b" data-lb="close" title="Закрыть (Esc)">✕</button>
+  </div>
+  <button class="lb-nav prev" data-lb="prev" title="Предыдущая (←)">‹</button>
+  <button class="lb-nav next" data-lb="next" title="Следующая (→)">›</button>
 </div>
 <script src="static/app.js"></script>
 </body>
