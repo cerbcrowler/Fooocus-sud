@@ -71,12 +71,14 @@
              ${range('steps', 'Шаги', -1, 60, 1, U.steps)}${range('cfg', 'CFG', 1, 15, 0.1, U.cfg)}${range('sharpness', 'Резкость', 0, 30, 1, U.sharpness)}`);
         // LoRA
         const lp = S.lora_presets.map((p) => `<button class="pill" data-lp="${esc(p.name)}" title="${esc((p.loras || []).map((l) => short(l.name) + ' ×' + l.weight).join(', '))}">${esc(p.name)}${p.name === startLora ? '<span class="star">★</span>' : ''}</button>`).join('');
-        const rows = U.loras.map(([on, name, w], i) => `<div class="lora"><input type="checkbox" data-lora-on="${i}"${on ? ' checked' : ''}>
+        const rows = U.loras.map(([on, name, w], i) => `<div class="lora" data-row="${i}"><span class="grip" title="Потяни, чтобы поменять порядок">⋮⋮</span><input type="checkbox" data-lora-on="${i}"${on ? ' checked' : ''}>
             <select data-lora-name="${i}"><option value="None">—</option>${opts(S.loras, name, (x) => x.replace(/\.safetensors$/i, ''))}</select>
             <button class="x" data-lora-del="${i}" title="Убрать">✕</button>
             <div class="w"><input type="range" data-lora-w="${i}" min="${S.lora_min}" max="${S.lora_max}" step="0.1" value="${w}"><output>${(+w).toFixed(1)}</output></div></div>`).join('');
         html += card('loras', '<b>LoRA</b>', `${U.loras.filter((l) => l[0]).length} из ${S.lora_slots}`,
-            `<div class="pills">${lp}</div>${rows}${U.loras.length < S.lora_slots ? '<button class="add" data-act="lora-add">＋ Добавить LoRA</button>' : ''}`);
+            `<div class="pills">${lp}</div><div class="loras">${rows}</div>${U.loras.length < S.lora_slots
+                ? '<button class="add" data-act="lora-add">＋ Добавить LoRA</button>'
+                : `<div class="add full" title="Больше слотов: ⚙️ Настройки классического интерфейса → «Слотов LoRA»">Все ${S.lora_slots} слота заняты · убери лишнюю ✕ или добавь слотов в ⚙️ Настройках</div>`}`);
         // Разрешение
         const ars = S.aspects.map((a) => {
             const [w, h] = arOf(a), g = gcd(w, h), k = 18 / Math.max(w, h);
@@ -217,7 +219,14 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
         $('#dl').style.display = item ? '' : 'none';
     }
     function select(item) { current = item; showImage(item.url, item); renderStrip(); }
+    function applyStrip() {
+        $('#strip').hidden = !!U.stripHidden;
+        const c = $('#chip-strip');
+        c.textContent = (U.stripHidden ? '▸ лента' : '▾ лента') + (history.length ? ` · ${history.length}` : '');
+        c.classList.toggle('on', !U.stripHidden);
+    }
     function renderStrip() {
+        applyStrip();
         $('#strip').innerHTML = history.slice(0, 30).map((h, i) => `<img src="${h.url}" data-h="${i}" class="${current && current.key === h.key ? 'on' : ''}" title="seed ${h.seed}" loading="lazy">`).join('');
         $('#gallery').innerHTML = history.map((h, i) => `<img src="${h.url}" data-h="${i}" title="seed ${h.seed}\n${esc(h.prompt)}" loading="lazy">`).join('') || '<div class="hint">Пока пусто</div>';
     }
@@ -249,6 +258,7 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
         if (t.id === 'btn-gen') { generate(); return; }
         if (t.id === 'st-save') { onSaveButton(); return; }
         if (t.id === 'btn-stop' && running) { api('task/' + running.id + '/stop', {}); return; }
+        if (t.id === 'chip-strip') { U.stripHidden = !U.stripHidden; save(); applyStrip(); return; }
         if (t.id === 'chip-neg') { U.showNeg = !U.showNeg; save(); $('#neg-row').hidden = !U.showNeg; t.classList.toggle('on', U.showNeg); return; }
         if (t.id === 'chip-cam') { U.closed.camera = false; save(); renderRight(); $('[data-card="camera"]').scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
         if (t.id === 'chip-tr') {
@@ -305,6 +315,29 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
     document.addEventListener('keydown', (e) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); generate(); }
     });
+    // ---------- LoRA: перетаскивание строк за ⋮⋮ ----------
+    document.addEventListener('pointerdown', (e) => {
+        const grip = e.target.closest && e.target.closest('.lora .grip');
+        if (!grip) return;
+        e.preventDefault();
+        const row = grip.closest('.lora'), from = +row.dataset.row, list = row.parentElement;
+        let to = from;
+        row.classList.add('dragging'); document.body.classList.add('resizing');
+        const rows = [...list.querySelectorAll('.lora')];
+        const move = (ev) => {
+            to = rows.length - 1;
+            for (let i = 0; i < rows.length; i++) { const r = rows[i].getBoundingClientRect(); if (ev.clientY < r.top + r.height / 2) { to = i; break; } }
+            rows.forEach((r, i) => { r.classList.toggle('drop-before', i === to && to < from); r.classList.toggle('drop-after', i === to && to > from); });
+        };
+        const up = () => {
+            document.removeEventListener('pointermove', move); document.body.classList.remove('resizing');
+            if (to !== from) { const [x] = U.loras.splice(from, 1); U.loras.splice(to, 0, x); save(); }
+            renderRight();
+        };
+        document.addEventListener('pointermove', move);
+        document.addEventListener('pointerup', up, { once: true });
+    });
+
     // ---------- ширина правой панели (перетаскивание, запоминается) ----------
     const RW_DEF = 300, RW_MIN = 240, RW_MAX = 640;
     const setRW = (w) => { U.rightW = Math.round(Math.min(RW_MAX, Math.max(RW_MIN, w))); document.querySelector('.main').style.setProperty('--right-w', U.rightW + 'px'); };
