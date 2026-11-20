@@ -176,6 +176,15 @@ def calculate_sigmas_scheduler_hacked(model, scheduler_name, steps):
         sigmas = normal_scheduler(model, steps, sgm=True)
     elif scheduler_name == "turbo":
         sigmas = SDTurboScheduler().get_sigmas(model=model, steps=steps, denoise=1.0)[0]
+    elif scheduler_name in ("beta", "kl_optimal", "linear_quadratic"):  # Fooocus-sud: из ComfyUI
+        from ldm_patched.k_diffusion import sampling_sud
+        ms = model.model_sampling
+        if scheduler_name == "beta":
+            sigmas = sampling_sud.beta_scheduler(ms, steps)
+        elif scheduler_name == "kl_optimal":
+            sigmas = sampling_sud.kl_optimal_scheduler(n=steps, sigma_min=float(ms.sigma_min), sigma_max=float(ms.sigma_max))
+        else:
+            sigmas = sampling_sud.linear_quadratic_schedule(ms, steps)
     elif scheduler_name == "align_your_steps":
         model_type = 'SDXL' if isinstance(model.latent_format, ldm_patched.modules.latent_formats.SDXL) else 'SD1'
         sigmas = AlignYourStepsScheduler().get_sigmas(model_type=model_type, steps=steps, denoise=1.0)[0]

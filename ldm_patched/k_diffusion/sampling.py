@@ -906,3 +906,8 @@ def sample_restart(model, x, sigmas, extra_args=None, callback=None, disable=Non
         last_sigma = new_sigma
 
     return x
+
+
+# Fooocus-sud: новые сэмплеры из ComfyUI
+from .sampling_sud import (sample_er_sde, sample_res_multistep, sample_res_multistep_ancestral,  # noqa: E402
+                           sample_gradient_estimation, sample_seeds_2)

@@ -43,7 +43,13 @@ KSAMPLER = {
     "ddpm": "",
     "lcm": "LCM",
     "tcd": "TCD",
-    "restart": "Restart"
+    "restart": "Restart",
+    # Fooocus-sud: новые из ComfyUI
+    "er_sde": "ER-SDE",
+    "res_multistep": "Res Multistep",
+    "res_multistep_ancestral": "Res Multistep a",
+    "gradient_estimation": "Gradient Estimation",
+    "seeds_2": "SEEDS-2"
 }
 
 SAMPLER_EXTRA = {
@@ -56,7 +62,8 @@ SAMPLERS = KSAMPLER | SAMPLER_EXTRA
 
 KSAMPLER_NAMES = list(KSAMPLER.keys())
 
-SCHEDULER_NAMES = ["normal", "karras", "exponential", "sgm_uniform", "simple", "ddim_uniform", "lcm", "turbo", "align_your_steps", "tcd", "edm_playground_v2.5"]
+SCHEDULER_NAMES = ["normal", "karras", "exponential", "sgm_uniform", "simple", "ddim_uniform", "lcm", "turbo", "align_your_steps", "tcd", "edm_playground_v2.5",
+                   "beta", "kl_optimal", "linear_quadratic"]  # Fooocus-sud: последние три — из ComfyUI
 SAMPLER_NAMES = KSAMPLER_NAMES + list(SAMPLER_EXTRA.keys())
 
 sampler_list = SAMPLER_NAMES
