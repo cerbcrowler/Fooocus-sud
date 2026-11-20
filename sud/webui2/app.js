@@ -16,6 +16,7 @@
         sun: '<path d="M12 12m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0"/><path d="M3 12h1m8 -9v1m8 8h1m-9 8v1m-6.4 -15.4l.7 .7m12.1 -.7l-.7 .7m0 11.4l.7 .7m-12.1 -.7l-.7 .7"/>',
         moon: '<path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z"/>',
         chev: '<path d="M6 9l6 6l6 -6"/>',
+        settings: '<path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z"/><path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/>',
     };
     const svg = (n) => `<svg class="i" viewBox="0 0 24 24">${ICON[n]}</svg>`;
 
@@ -307,6 +308,7 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
                 let items = r.images.map((k, i) => ({ key: k, url: API + 'image/' + k, name: (r.names || [])[i], seed: r.seed, prompt: running.prompt, action: running.action }));
                 if (running.action === 'faces') items = items.slice(-1);   // Enhance отдаёт ещё и исходник — он у нас уже есть
                 saveToLaptop(items);
+                if (SRV && SRV.notify_sound !== false) chime();
                 history = items.concat(history).slice(0, 60);
                 lsSet(LS_HIST, history);
                 running = null;
@@ -813,6 +815,106 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
         el.innerHTML = parts.join('');
     }
 
+    // ---------- ⚙️ настройки (те же, что вкладка «⚙️ Настройки» классического; файл settings.json на Drive) ----------
+    const ST = { data: null, busy: false, msg: '', timer: null };
+    async function settOpen() {
+        $('#sett').innerHTML = '<div class="hint">Загружаю настройки…</div>';
+        try { ST.data = await api('settings'); } catch (e) { $('#sett').innerHTML = `<div class="hint">Не получилось: ${esc(e.message)}</div>`; return; }
+        settRender();
+        clearInterval(ST.timer);
+        ST.timer = setInterval(async () => {   // пока идёт загрузка моделей — обновлять статус
+            if ($('#v-settings').hidden) { clearInterval(ST.timer); return; }
+            if (!ST.data || !ST.data.prefetch_running) return;
+            try { const d = await api('settings'); ST.data.groups = d.groups; ST.data.log = d.log; ST.data.prefetch_running = d.prefetch_running; settRender(); } catch (e) { /* */ }
+        }, 4000);
+    }
+    const mbStr = (mb) => (mb >= 1024 ? (mb / 1024).toFixed(1).replace('.', ',') + ' ГБ' : mb + ' МБ');
+    function settRender() {
+        const D = ST.data, V = D.values, sel = new Set(V.sud_prefetch_groups || []);
+        const selMb = D.groups.filter((g) => sel.has(g.id)).reduce((a, g) => a + g.mb, 0);
+        const st = { done: '<span class="ok">✓ скачано</span>', partial: '<span class="warn">◐ частично</span>', none: '<span class="dim">нет</span>' };
+        const rs = (k) => (D.restart_keys.includes(k) ? ' <span class="rs" title="Вступит в силу после перезапуска Fooocus">↻</span>' : '');
+        const chk = (k, label, hint) => `<label class="srow"><input type="checkbox" data-set="${k}"${V[k] ? ' checked' : ''}> <span>${label}${hint ? `<small>${hint}</small>` : ''}</span></label>`;
+        const groups = D.groups.map((g) => `<label class="mrow" title="${esc(g.files.join(', '))}"><input type="checkbox" data-pf="${g.id}"${sel.has(g.id) ? ' checked' : ''}>
+            <span class="mn">${esc(g.name)}</span><span class="sz">${mbStr(g.mb)}</span>${st[g.status]}</label>`).join('');
+        const need = D.groups.filter((g) => sel.has(g.id) && g.status !== 'done').length;
+        $('#sett').innerHTML = `<div class="sett-grid">
+          <div class="card"><div class="ch"><b>Модели: скачать при запуске Colab</b><span class="sub">отмечено ${mbStr(selMb)}</span></div><div class="body">
+            <div class="hint">Качаются в фоне сразу после запуска, генерации не мешают. Без галочки модель скачается при первом использовании.</div>
+            <div class="mlist">${groups}</div>
+            <div class="sbtns"><button class="btn-s acc" data-pf-now${need ? '' : ' disabled'} title="Скачать отмеченные, которых ещё нет">⬇ скачать отмеченное сейчас${need ? ` (${need})` : ''}</button>
+              ${D.prefetch_running ? '<span class="warn">⏳ идёт загрузка…</span>' : ''}</div>
+            ${D.log.length ? `<div class="slog">${D.log.map(esc).join('<br>')}</div>` : ''}
+          </div></div>
+          <div class="scol">
+            <div class="card"><div class="ch"><b>Интерфейс</b></div><div class="body">
+              ${chk('sud_info_plate', '🏷 Плашка с параметрами на готовых картинках', 'сэмплер, шаги, seed, модель, LoRA — внизу картинки')}
+              <div class="srow">${chk('sud_notify_sound', '🔔 Звук, когда генерация закончилась')}<button class="btn-s" data-chime title="Прослушать">▶</button></div>
+              <div class="srow"><span>Тема</span><span class="seg">${THEMES.map(([k, t]) => `<button class="${themeNow() === k ? 'on' : ''}" data-theme="${k}">${t.replace('Gruvbox ', '')}</button>`).join('')}</span></div>
+            </div></div>
+            <div class="card"><div class="ch"><b>Перевод</b></div><div class="body">
+              <div class="srow"><span>Чем переводить</span><span class="seg"><button class="${V.sud_translate_engine === 'deepl' ? 'on' : ''}" data-set-engine="deepl" title="DeepL, если не получится — Google">DeepL</button><button class="${V.sud_translate_engine === 'google' ? 'on' : ''}" data-set-engine="google">Google</button></span></div>
+              ${chk('sud_auto_translate', 'Автоперевод по умолчанию', 'в новом интерфейсе — переключатель «авто» у RU→EN; это значение для классического и первого запуска')}
+            </div></div>
+            <div class="card"><div class="ch"><b>LoRA и генерация</b></div><div class="body">
+              <div class="srow"><span>Слотов LoRA${rs('default_max_lora_number')}</span><input type="number" min="1" max="20" data-set-n="default_max_lora_number" value="${V.default_max_lora_number}"></div>
+              <div class="srow"><span>Вес LoRA, от и до${rs('default_loras_min_weight')}</span><span class="two"><input type="number" step="0.5" data-set-n="default_loras_min_weight" value="${V.default_loras_min_weight}"><input type="number" step="0.5" data-set-n="default_loras_max_weight" value="${V.default_loras_max_weight}"></span></div>
+              <div class="srow"><span>Максимум картинок за раз${rs('default_max_image_number')}</span><input type="number" min="1" max="64" data-set-n="default_max_image_number" value="${V.default_max_image_number}"></div>
+              <div class="sneg"><span>Негатив по умолчанию <small>(для классического и новых сессий)</small></span><textarea rows="2" data-set-t="default_prompt_negative">${esc(V.default_prompt_negative || '')}</textarea></div>
+            </div></div>
+            <div class="smsg">${esc(ST.msg)}</div>
+          </div></div>`;
+    }
+    async function settSave(values) {
+        try {
+            const r = await api('settings', { values });
+            const keepLog = ST.data.log;
+            ST.data = r; ST.data.log = r.log || keepLog;
+            ST.msg = r.restart && r.restart.length ? '✓ Сохранено. ↻ Часть настроек заработает после перезапуска Fooocus.' : '✓ Сохранено';
+            if ('sud_notify_sound' in values) SRV.notify_sound = values.sud_notify_sound;
+            flash('Сохранено');
+        } catch (e) { ST.msg = '⚠️ ' + e.message; }
+        settRender();
+    }
+    document.addEventListener('change', (e) => {
+        const t = e.target;
+        if (!t.closest || !t.closest('#sett')) return;
+        if (t.dataset.set) settSave({ [t.dataset.set]: t.checked });
+        else if (t.dataset.pf) {
+            const sel = new Set(ST.data.values.sud_prefetch_groups || []);
+            t.checked ? sel.add(t.dataset.pf) : sel.delete(t.dataset.pf);
+            settSave({ sud_prefetch_groups: [...sel] });
+        } else if (t.dataset.setN) settSave({ [t.dataset.setN]: +t.value });
+        else if (t.dataset.setT) settSave({ [t.dataset.setT]: t.value });
+    });
+    document.addEventListener('click', async (e) => {
+        const t = e.target.closest && e.target.closest('#sett button');
+        if (!t) return;
+        if (t.dataset.setEngine) settSave({ sud_translate_engine: t.dataset.setEngine });
+        else if (t.dataset.chime !== undefined) chime();
+        else if (t.dataset.theme) settRender();
+        else if (t.dataset.pfNow !== undefined) {
+            const groups = ST.data.groups.filter((g) => ST.data.values.sud_prefetch_groups.includes(g.id) && g.status !== 'done').map((g) => g.id);
+            try { await api('prefetch', { groups }); ST.data.prefetch_running = true; ST.msg = '⏳ Загрузка пошла в фоне'; settRender(); setTimeout(settOpen, 1500); }
+            catch (er) { ST.msg = '⚠️ ' + er.message; settRender(); }
+        }
+    });
+
+    // ---------- 🔔 звук по окончании (как javascript/sud-notify.js классического) ----------
+    let actx = null;
+    const audio = () => { if (!actx) { const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return null; actx = new AC(); } if (actx.state === 'suspended') actx.resume(); return actx; };
+    ['pointerdown', 'keydown'].forEach((ev) => document.addEventListener(ev, () => audio(), { once: true, capture: true }));
+    function chime() {
+        const a = audio(); if (!a) return;
+        const t0 = a.currentTime + 0.02, master = a.createGain(); master.gain.value = 0.22; master.connect(a.destination);
+        [[659.25, 0], [880, 0.16]].forEach(([f, dt]) => [[1, 1], [2.01, 0.25], [3.02, 0.08]].forEach(([mul, vol]) => {
+            const o = a.createOscillator(), g = a.createGain(), t = t0 + dt;
+            o.type = 'sine'; o.frequency.value = f * mul;
+            g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.4);
+            o.connect(g); g.connect(master); o.start(t); o.stop(t + 1.5);
+        }));
+    }
+
     // ---------- ✎ Inpaint: маска кистью поверх картинки, дорисовка краёв ----------
     const INP_MODES = [['replace', 'Заменить', 'Обычный inpaint: нарисовать в маске по промпту; стрелки — дорисовать края'],
         ['detail', 'Улучшить детали', 'Лицо, руки, глаза: аккуратно перерисовать, сохранив суть'],
@@ -1238,7 +1340,9 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
 
     function switchView(v) {
         document.querySelectorAll('.nv[data-view]').forEach((b) => b.classList.toggle('on', b.dataset.view === v));
-        $('#v-create').hidden = v !== 'create'; $('#v-gallery').hidden = v !== 'gallery';
+        $('#v-create').hidden = v !== 'create'; $('#v-gallery').hidden = v !== 'gallery'; $('#v-settings').hidden = v !== 'settings';
+        document.querySelector('.main').classList.toggle('wide', v === 'settings');   // справа карточки не нужны
+        if (v === 'settings') settOpen();
     }
 
     // ---------- запуск ----------

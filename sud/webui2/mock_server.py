@@ -57,6 +57,21 @@ EMB = {"folder": "/content/drive/MyDrive/FOOOCUS-SUD/models/embeddings", "messag
                      ("old_sd15_emb", "OTHER", False, False, False), ("random_emb", "", False, False, None)]]}
 
 
+SETT = {
+    "values": {"sud_info_plate": True, "sud_notify_sound": True, "sud_translate_engine": "deepl", "sud_auto_translate": True,
+               "default_max_lora_number": 5, "default_loras_min_weight": -2, "default_loras_max_weight": 2,
+               "default_max_image_number": 32, "default_prompt_negative": "embedding:unaestheticXL",
+               "sud_prefetch_groups": ["inpaint", "image_prompt", "control", "describe", "enhance", "speed_loras", "upscale"]},
+    "groups": [{"id": g, "name": n, "mb": mb, "status": st, "files": [g + ".bin"]} for g, n, mb, st in [
+        ("inpaint", "Inpaint / Outpaint (v2.6)", 1263, "done"), ("image_prompt", "Image Prompt и FaceSwap (IP-Adapter)", 3813, "none"),
+        ("control", "Canny и CPDS", 754, "done"), ("pose", "OpenPose: ControlNet поз (xinsir) + DWPose", 2853, "done"),
+        ("describe", "Describe (BLIP и теги для аниме)", 1495, "partial"), ("enhance", "Enhance-маски (SAM base + GroundingDINO)", 1018, "partial"),
+        ("speed_loras", "Ускоряющие LoRA (Extreme Speed, Lightning, Hyper-SD)", 1500, "none"), ("upscale", "Upscale / Variation", 32, "done")]],
+    "prefetch_running": False, "log": ["20:07:12 ✅ inpaint_v26.fooocus.patch (1262 МБ за 14 с)", "20:07:40 🏁 Готово за 41 с: скачано 5, ошибок 0"],
+    "restart_keys": ["default_max_lora_number", "default_loras_min_weight", "default_loras_max_weight", "default_max_image_number"],
+}
+
+
 def _svg(seed, w=1024, h=1024):
     r = random.Random(seed)
     c1 = "#%02x%02x%02x" % (r.randint(120, 230), r.randint(60, 160), r.randint(20, 120))
@@ -109,6 +124,8 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, out)
         if p == "/sud/api/embeddings":
             return self._send(200, EMB)
+        if p == "/sud/api/settings":
+            return self._send(200, SETT)
         if p.startswith("/sud/api/image/"):
             return self._send(200, _svg(int(k) if (k := p.rsplit("/", 1)[-1]).isdigit() else int(k[1:9], 16)), "image/svg+xml")
         return self._send(404, {"error": "нет"})
@@ -146,6 +163,13 @@ class H(BaseHTTPRequestHandler):
                                                                                     [.45, .58], [.44, .75], [.44, .92], [.55, .58], [.56, .75], None, [.48, .19], [.52, .19], None, [.54, .2]],
                                                                            "left_hand": None, "right_hand": None, "face": None}]})
             return self._send(200, {"key": "u" + uuid.uuid4().hex[:16]})
+        if p == "/sud/api/settings":
+            SETT["values"].update(body.get("values") or {})
+            print("settings:", body.get("values"))
+            return self._send(200, dict(SETT, saved=True, restart=[k for k in body.get("values") or {} if k in SETT["restart_keys"]]))
+        if p == "/sud/api/prefetch":
+            SETT["prefetch_running"] = True
+            return self._send(200, {"ok": True})
         if p == "/sud/api/presets":
             key = {"sampling": "sampling_presets", "loras": "lora_presets"}[body["kind"]]
             L, name, op = STATE[key], body.get("name"), body.get("op")

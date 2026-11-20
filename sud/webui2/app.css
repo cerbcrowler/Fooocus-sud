@@ -138,6 +138,32 @@ select, input[type=number], input[type=text] { width: 100%; background: var(--bg
 .btn-s.danger:hover, .btn-s.danger.sure { border-color: var(--red, #fb4934); color: var(--red, #fb4934); }
 #flash { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); opacity: 0; pointer-events: none; transition: .2s;
     background: var(--panel); border: 1px solid var(--acc); color: var(--acc); border-radius: 999px; padding: 5px 14px; font-size: 12.5px; z-index: 99; }
+/* ---------- ⚙️ настройки ---------- */
+#v-settings { overflow: auto; }
+.main.wide { grid-template-columns: 54px minmax(0, 1fr); }
+.main.wide .resizer, .main.wide .right { display: none; }
+.sett-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; align-items: start; padding-bottom: 20px; }
+.scol { display: grid; gap: 12px; }
+.sett .card .ch { cursor: default; }
+.mlist { display: grid; margin: 8px 0; }
+.mrow { display: grid; grid-template-columns: 18px minmax(0, 1fr) 62px 86px; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); font-size: 12.5px; cursor: pointer; }
+.mrow .sz { color: var(--dim); text-align: right; font-size: 12px; }
+.mrow .ok, .sett .ok { color: var(--grn); font-size: 12px; } .sett .warn { color: var(--yel); font-size: 12px; }
+.srow { display: flex; align-items: center; gap: 8px; justify-content: space-between; padding: 5px 0; font-size: 12.5px; }
+label.srow { justify-content: flex-start; cursor: pointer; }
+.srow small, .sneg small { display: block; color: var(--dim2); font-size: 11px; }
+.srow input[type=number] { width: 80px; }
+.srow .two { display: flex; gap: 6px; } .srow .two input { width: 70px; }
+.sneg { display: grid; gap: 4px; font-size: 12.5px; padding-top: 4px; }
+.sneg textarea { width: 100%; background: var(--bg); border: 1px solid var(--line2); border-radius: 8px; padding: 5px 8px; resize: vertical; }
+.seg { display: inline-flex; border: 1px solid var(--line2); border-radius: 999px; overflow: hidden; }
+.seg button { border: 0; background: transparent; color: var(--fg2); padding: 3px 11px; font-size: 12px; }
+.seg button.on { background: var(--acc-bg); color: var(--acc); }
+.sbtns { display: flex; gap: 10px; align-items: center; }
+.slog { margin-top: 8px; font: 11px/1.5 ui-monospace, monospace; color: var(--dim); background: var(--bg); border-radius: 8px; padding: 6px 8px; }
+.rs { color: var(--yel); }
+.smsg { font-size: 12px; color: var(--dim); min-height: 16px; }
+
 /* ---------- 🦴 поза ---------- */
 .pose-edit { width: 100%; margin: 4px 0 2px; font-size: 11.5px; }
 .ips.empty { flex-direction: column; }

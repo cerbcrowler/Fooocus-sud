@@ -12,6 +12,9 @@
     POST /sud/api/presets         {kind, op: add|update|edit|delete, name, new?, note?, values?} → пресеты (Drive)
     POST /sud/api/upload          картинка (тело запроса) или {"from": key} → {"key"} для «Образцов» (Image Prompt)
     POST /sud/api/pose            {op: detect, key} → позы с фото (DWPose); {op: render, poses, w, h} → {key} скелета
+    GET  /sud/api/settings        ⚙️ настройки (как вкладка классического) + группы моделей для предзагрузки
+    POST /sud/api/settings        {values: {...}} — сохранить (sud/settings.py → Drive, config.txt)
+    POST /sud/api/prefetch        {groups: [...]} — скачать эти модели сейчас, в фоне (sud/prefetch.py)
     GET  /sud/api/embeddings      эмбеддинги (папки, превью, избранное…), POST {op: fav|neg|used} — изменить
 
 Генерация идёт через ту же очередь, что кнопка Generate (modules.async_worker.async_tasks).
@@ -375,6 +378,79 @@ def _sys():
     return out
 
 
+# ---------------- ⚙️ настройки ----------------
+SETTING_KEYS = {   # ключ: (тип, нужен ли перезапуск Fooocus)
+    "sud_info_plate": (bool, False), "sud_notify_sound": (bool, False),
+    "sud_translate_engine": (str, False), "sud_auto_translate": (bool, False),
+    "default_max_lora_number": (int, True), "default_loras_min_weight": (float, True),
+    "default_loras_max_weight": (float, True), "default_max_image_number": (int, True),
+    "default_prompt_negative": (str, False), "sud_prefetch_groups": (list, False),
+}
+
+
+def _settings_view():
+    from sud import prefetch as PF, settings as S
+    cfg = S.effective()
+    vals = {k: cfg.get(k) for k in SETTING_KEYS}
+    vals["sud_prefetch_groups"] = PF.selected_groups()
+    vals["sud_translate_engine"] = vals["sud_translate_engine"] or "deepl"
+    vals["sud_notify_sound"] = cfg.get("sud_notify_sound", True)
+    groups = [{"id": g, "name": PF.GROUPS[g][0], "mb": PF.group_size_mb(g), "status": PF.group_status(g),
+               "files": [n for _, _, n, _ in PF.GROUPS[g][1]]} for g in PF.GROUPS]
+    tail = []
+    try:
+        with open(PF.LOG, encoding="utf-8") as f:
+            tail = [l.strip() for l in f.readlines()[-4:] if l.strip()]
+    except OSError:
+        pass
+    return {"values": vals, "groups": groups, "prefetch_running": PF._already_running(), "log": tail,
+            "restart_keys": [k for k, (_, r) in SETTING_KEYS.items() if r]}
+
+
+def _settings_save(new):
+    from sud import prefetch as PF, settings as S
+    data = {}
+    for k, v in (new or {}).items():
+        if k not in SETTING_KEYS:
+            continue
+        typ = SETTING_KEYS[k][0]
+        if typ is list:
+            data[k] = [g for g in (v or []) if g in PF.GROUPS]
+        elif typ is bool:
+            data[k] = bool(v)
+        else:
+            data[k] = typ(v)
+    if "sud_translate_engine" in data and data["sud_translate_engine"] not in ("deepl", "google"):
+        raise ValueError("неизвестный переводчик")
+    for k, lo, hi in (("default_max_lora_number", 1, 20), ("default_max_image_number", 1, 64)):
+        if k in data and not lo <= data[k] <= hi:
+            raise ValueError(f"{k}: от {lo} до {hi}")
+    user = S.load_user()
+    cur = {**S.effective(), **data}
+    if float(cur.get("default_loras_min_weight", -2)) >= float(cur.get("default_loras_max_weight", 2)):
+        raise ValueError("мин. вес LoRA должен быть меньше максимального")
+    if "default_max_image_number" in data and int(cur.get("default_image_number", 1)) > data["default_max_image_number"]:
+        data["default_image_number"] = data["default_max_image_number"]
+    path = S.settings_path()
+    if os.path.isfile(path):   # прошлая версия — на всякий случай
+        try:
+            import shutil
+            shutil.copy2(path, path + ".bak")
+        except OSError:
+            pass
+    S.save_user({**user, **data})
+    S.apply()
+    return [k for k in data if k in SETTING_KEYS and SETTING_KEYS[k][1]]
+
+
+def _notify_sound():
+    try:
+        from sud import settings as S
+        return bool(S.effective().get("sud_notify_sound", True))
+    except Exception:
+        return True
+
+
 def _auto_translate():
     try:
         from sud import settings as S
@@ -423,6 +499,7 @@ def _state():
         "busy": any(not r["done"] for r in _tasks.values()),
         "sec_per_image": _eta(1),
         "auto_translate": _auto_translate(),
+        "notify_sound": _notify_sound(),
         "sys": _sys(),
         "inpaint_modes": {k: {"strength": v[3], "field": v[4]} for k, v in INPAINT_MODES.items()},
     }
@@ -503,6 +580,30 @@ def _routes(app):
         except Exception as e:
             return JSONResponse({"error": f"не получилось взять картинку: {e}"}, status_code=400)
         return JSONResponse({"key": key, "w": size[0], "h": size[1]})
+
+    async def settings_get():
+        return JSONResponse(_settings_view())
+
+    async def settings_post(request: Request):
+        body = await request.json()
+        try:
+            restart = _settings_save(body.get("values"))
+        except (TypeError, ValueError) as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        return JSONResponse(dict(_settings_view(), saved=True, restart=restart))
+
+    async def prefetch(request: Request):
+        import subprocess
+        import sys
+        from sud import prefetch as PF, settings as S
+        body = await request.json()
+        groups = [g for g in body.get("groups") or [] if g in PF.GROUPS]
+        if not groups:
+            return JSONResponse({"error": "ничего не выбрано"}, status_code=400)
+        subprocess.Popen(f"{sys.executable} -m sud.prefetch run --groups {','.join(groups)} >> {PF.LOG} 2>&1",
+                         shell=True, cwd=S.FOOOCUS_DIR, start_new_session=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return JSONResponse({"ok": True})
 
     async def pose(request: Request):
         import asyncio
@@ -611,6 +712,9 @@ def _routes(app):
     app.add_api_route("/sud/api/image/{key}", image, methods=["GET"])
     app.add_api_route("/sud/api/upload", upload, methods=["POST"])
     app.add_api_route("/sud/api/pose", pose, methods=["POST"])
+    app.add_api_route("/sud/api/settings", settings_get, methods=["GET"])
+    app.add_api_route("/sud/api/settings", settings_post, methods=["POST"])
+    app.add_api_route("/sud/api/prefetch", prefetch, methods=["POST"])
     app.add_api_route("/sud/api/translate", translate, methods=["POST"])
     app.add_api_route("/sud/api/presets/order", presets_order, methods=["POST"])
     app.add_api_route("/sud/api/presets", presets_edit, methods=["POST"])
