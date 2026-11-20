@@ -164,7 +164,9 @@ def _new_task(p):
 def _eta(n):
     if not _durations:
         return None
-    return round(sum(_durations) / len(_durations) * n, 1)
+    # медиана: первая генерация с загрузкой модели (минута) не должна портить оценку
+    d = sorted(_durations)
+    return round(d[len(d) // 2] * n, 1)
 
 
 # ---------------- состояние для интерфейса ----------------
