@@ -301,6 +301,14 @@ def _choices(c):
     return out
 
 
+def _auto_translate():
+    try:
+        from sud import settings as S
+        return bool(S.effective().get("sud_auto_translate", False))
+    except Exception:
+        return False
+
+
 def _state():
     import modules.config as C
     import modules.flags as F
@@ -340,6 +348,7 @@ def _state():
         "queue": len(worker.async_tasks),
         "busy": any(not r["done"] for r in _tasks.values()),
         "sec_per_image": _eta(1),
+        "auto_translate": _auto_translate(),
     }
 
 

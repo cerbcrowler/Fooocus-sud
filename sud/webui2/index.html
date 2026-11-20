@@ -55,7 +55,8 @@
         <textarea id="prompt" rows="3" placeholder="Что нарисовать? Можно по-русски — кнопка RU→EN или автоперевод"></textarea>
         <div class="neg" id="neg-row" hidden><textarea id="negative" rows="2" placeholder="Чего не должно быть (негативный промпт)"></textarea></div>
         <div class="prow">
-          <button class="chip" id="chip-tr" title="Перевести промпт на английский (DeepL / Google)">RU→EN</button>
+          <span class="trg"><button class="chip" id="chip-tr" title="Перевести промпт и негатив на английский (DeepL / Google)">RU→EN</button><button class="chip" id="chip-tr-auto" title="Автоперевод: перед «Создать» русский текст сам переводится на английский">авто</button></span>
+          <button class="chip" id="chip-tr-undo" hidden title="Вернуть русский текст, как было до перевода">↶ рус</button>
           <button class="chip" id="chip-em" title="Эмбеддинги: клик — в промпт, Shift+клик — туда, где курсор">🧬 эмбеддинги</button>
           <button class="chip" id="chip-ip" title="Образцы (Image Prompt): лицо, поза, контур, похожий стиль с фото">🖼 образцы</button>
           <button class="chip" id="chip-neg">− негатив</button>

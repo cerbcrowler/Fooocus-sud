@@ -138,6 +138,9 @@ select, input[type=number], input[type=text] { width: 100%; background: var(--bg
 .btn-s.danger:hover, .btn-s.danger.sure { border-color: var(--red, #fb4934); color: var(--red, #fb4934); }
 #flash { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); opacity: 0; pointer-events: none; transition: .2s;
     background: var(--panel); border: 1px solid var(--acc); color: var(--acc); border-radius: 999px; padding: 5px 14px; font-size: 12.5px; z-index: 99; }
+.trg { display: inline-flex; }
+.trg #chip-tr { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.trg #chip-tr-auto { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px; font-size: 11px; }
 .themes { position: relative; }
 .tmenu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 60; background: var(--panel); border: 1px solid var(--line2); border-radius: 10px; padding: 5px; min-width: 190px; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
 .tmenu button { display: flex; align-items: center; gap: 9px; width: 100%; background: transparent; border: 0; border-radius: 7px; padding: 6px 8px; color: var(--fg2); text-align: left; font-size: 12.5px; }

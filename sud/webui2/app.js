@@ -247,8 +247,38 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
         const eta = SRV && SRV.sec_per_image ? ` · ~${Math.round(SRV.sec_per_image * n)} с` : '';
         $('#gen-sub').textContent = `×${n}${eta}`;
     }
+    // ---------- перевод RU→EN: вручную, автоматически перед «Создать», откат «↶ рус» ----------
+    const CYR = /[а-яё]/i;
+    async function translateFields() {
+        const chip = $('#chip-tr'); chip.classList.add('busy');
+        const undo = {};
+        try {
+            for (const [id, f] of [['prompt', 'prompt'], ['negative', 'negative']]) {
+                const ta = $('#' + id), ru = ta.value;
+                if (!CYR.test(ru)) continue;
+                const r = await api('translate', { text: ru });
+                if (!r.text) continue;
+                ta.value = r.text; U[f] = r.text; undo[f] = { ru, en: r.text };
+                if (r.warn) console.warn('[перевод]', r.engine, r.warn);
+            }
+        } finally { chip.classList.remove('busy'); }
+        if (Object.keys(undo).length) { U.trUndo = Object.assign(U.trUndo || {}, undo); save(); }
+        renderTr();
+    }
+    function renderTr() {
+        $('#chip-tr-auto').classList.toggle('on', !!U.autoTr);
+        const u = U.trUndo, still = u && ['prompt', 'negative'].some((f) => u[f] && $('#' + f).value === u[f].en);
+        $('#chip-tr-undo').hidden = !still;
+    }
+
     async function generate(extra) {
         if (running) return;
+        if (U.autoTr && !(extra && extra.action) && CYR.test($('#prompt').value + $('#negative').value)) {
+            $('#btn-gen').disabled = true; setProgress(0, 'Перевожу промпт…');
+            try { await translateFields(); }
+            catch (e) { $('#btn-gen').disabled = false; setProgress(0, ''); alert('Перевод не удался, ничего не запускаю: ' + e.message); return; }
+            $('#btn-gen').disabled = false;
+        }
         const payload = Object.assign({
             prompt: $('#prompt').value, negative: $('#negative').value, model: U.model, loras: U.loras,
             sampler: U.sampler, scheduler: U.scheduler, steps: +U.steps, cfg: +U.cfg, sharpness: +U.sharpness,
@@ -359,18 +389,24 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
         if (t.id === 'chip-neg') { U.showNeg = !U.showNeg; save(); $('#neg-row').hidden = !U.showNeg; t.classList.toggle('on', U.showNeg); return; }
         if (t.id === 'chip-cam') { U.closed.camera = false; save(); renderRight(); $('[data-card="camera"]').scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
         if (t.id === 'chip-tr') {
-            const ta = $('#prompt'); if (!ta.value.trim()) return;
-            t.classList.add('busy');
-            try { const r = await api('translate', { text: ta.value }); if (r.text) { ta.value = r.text; U.prompt = r.text; save(); } }
-            catch (er) { alert('Перевод не удался: ' + er.message); }
-            t.classList.remove('busy'); return;
+            if (!CYR.test($('#prompt').value + $('#negative').value)) { flash('Русского текста нет'); return; }
+            try { await translateFields(); } catch (er) { alert('Перевод не удался: ' + er.message); }
+            return;
+        }
+        if (t.id === 'chip-tr-auto') { U.autoTr = !U.autoTr; save(); renderTr(); flash(U.autoTr ? 'Автоперевод включён' : 'Автоперевод выключен'); return; }
+        if (t.id === 'chip-tr-undo' && U.trUndo) {
+            for (const [id, f] of [['prompt', 'prompt'], ['negative', 'negative']]) {
+                const o = U.trUndo[f];
+                if (o && $('#' + id).value === o.en) { $('#' + id).value = o.ru; U[f] = o.ru; }
+            }
+            U.trUndo = null; save(); renderTr(); return;
         }
         if (t.id === 'btn-theme') { const m = $('#tmenu'); m.hidden = !m.hidden; if (!m.hidden) renderThemes(); return; }
         if (t.dataset.theme) { setTheme(t.dataset.theme); $('#tmenu').hidden = true; return; }
     });
     document.addEventListener('input', (e) => {
         const t = e.target;
-        if (t.id === 'prompt') { U.prompt = t.value; save(); return; }
+        if (t.id === 'prompt') { U.prompt = t.value; save(); if (U.trUndo) renderTr(); return; }
         if (t.id === 'negative') { U.negative = t.value; save(); return; }
         if (t.dataset.pe) { PE[t.dataset.pe + 'Val'] = t.value; if (PE.err) { PE.err = ''; const er = t.parentElement.querySelector('.pe-err'); if (er) er.remove(); } return; }
         if (t.dataset.u && t.type === 'range') { U[t.dataset.u] = +t.value; t.nextElementSibling.textContent = t.value; save(); if (t.dataset.u === 'image_number') updateGenButton(); return; }
@@ -833,7 +869,8 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
             U.loras = p ? p.loras.map((l) => [l.enabled !== false, l.name, l.weight]) : D.loras;
             if (U.steps === -1 && D.steps) Object.assign(U, { steps: D.steps, cfg: D.cfg, sharpness: D.sharpness });
         }
-        save(); renderRight(); renderIp();
+        if (U.autoTr === undefined) U.autoTr = !!SRV.auto_translate;   // по умолчанию — как в ⚙️ Настройках классического
+        save(); renderRight(); renderIp(); renderTr();
         setInterval(refreshState, 15000);
     }
     boot();
