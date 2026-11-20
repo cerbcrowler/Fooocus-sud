@@ -411,7 +411,8 @@ def worker():
         try:  # Fooocus-sud: 🏷 плашка с параметрами — только на сохраняемой копии
             from sud import plate
             if plate.enabled():
-                lines = plate.lines_for(async_task.sampler_name, final_scheduler_name, steps, float(async_task.cfg_scale),
+                # имя шедулера — как выбрано в интерфейсе (у lcm/tcd внутри Fooocus расписание sgm_uniform)
+                lines = plate.lines_for(async_task.sampler_name, async_task.scheduler_name, steps, float(async_task.cfg_scale),
                                         task['task_seed'], async_task.base_model_name, loras, width, height,
                                         time.perf_counter() - task_start)
                 imgs_to_save = [plate.draw(x, lines) for x in imgs]
