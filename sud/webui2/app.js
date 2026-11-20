@@ -590,21 +590,41 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
         'Сидит': [[210, 120], [210, 158], [180, 160], [168, 215], [190, 255], [240, 160], [252, 215], [232, 255], [192, 265], [130, 275], [120, 350], [228, 265], [290, 275], [300, 350], [203, 114], [217, 114], [196, 120], [224, 120]],
     };
     const PS = { open: false, slot: -1, photo: null, W: 1024, H: 1024, people: [], sel: 0, undo: [], redo: [], busy: '', msg: '',
-        kids: true, hands: true, face: true, opacity: 0.45, drag: null };
+        kids: true, hands: true, face: true, ghosts: true, opacity: 0.45, drag: null };
     const pclone = (x) => JSON.parse(JSON.stringify(x));
     const pSnap = () => { PS.undo.push(pclone(PS.people)); if (PS.undo.length > 60) PS.undo.shift(); PS.redo = []; };
     function pTpl(name, dx = 0) {   // шаблон по центру кадра, рост ~80% высоты
         const k = PS.H / 420 * 0.95, cx = PS.W / 2 + dx * PS.W, cy = PS.H * 0.04;
         return { body: P_TPL[name].map(([x, y]) => [(cx + (x - 210) * k) / PS.W, (cy + y * k) / PS.H]), left_hand: null, right_hand: null, face: null };
     }
-    function pGhost(p, j) {   // где показать недостающий сустав: по шаблону «Стоит» от шеи, в масштабе человека
-        const b = p.body, T = P_TPL['Стоит'];
-        let k = PS.H / 420 * 0.95;
-        const neck = b[1] ? [b[1][0] * PS.W, b[1][1] * PS.H] : null;
-        const hip = b[8] || b[11];
-        if (neck && hip) k = Math.hypot(neck[0] - hip[0] * PS.W, neck[1] - hip[1] * PS.H) / Math.hypot(T[1][0] - T[8][0], T[1][1] - T[8][1]);
-        const base = neck || [PS.W / 2, PS.H * 0.3];
-        return [(base[0] + (T[j][0] - T[1][0]) * k) / PS.W, (base[1] + (T[j][1] - T[1][1]) * k) / PS.H];
+    const P_ORDER = [1, 0, 2, 5, 8, 11, 3, 6, 9, 12, 4, 7, 10, 13, 14, 15, 16, 17];   // от шеи наружу
+    function pGhosts(p) {   // недостающие суставы: шаблон «Стоит», подогнанный по найденным (масштаб и центр), цепочкой от родителя
+        const T = P_TPL['Стоит'].map(([x, y]) => [x / 420, y / 420]);
+        const have = p.body.map((q, j) => (q ? j : -1)).filter((j) => j >= 0);
+        if (have.length === 18) return {};
+        const mean = (pts) => [pts.reduce((a, q) => a + q[0], 0) / pts.length, pts.reduce((a, q) => a + q[1], 0) / pts.length];
+        let k = 1, cE = [0.5, 0.5], cT = mean(T);
+        if (have.length) {
+            cE = mean(have.map((j) => p.body[j])); cT = mean(have.map((j) => T[j]));
+            if (have.length >= 2) {
+                const dE = have.reduce((a, j) => a + (p.body[j][0] - cE[0]) ** 2 + (p.body[j][1] - cE[1]) ** 2, 0);
+                const dT = have.reduce((a, j) => a + (T[j][0] - cT[0]) ** 2 + (T[j][1] - cT[1]) ** 2, 0);
+                if (dT > 1e-6 && dE > 1e-6) k = Math.sqrt(dE / dT);
+            }
+        }
+        const pos = {}, at = (j) => p.body[j] || pos[j];
+        P_ORDER.forEach((j) => {
+            if (p.body[j]) return;
+            const par = P_PARENT[j];
+            pos[j] = par !== undefined && at(par)
+                ? [at(par)[0] + k * (T[j][0] - T[par][0]), at(par)[1] + k * (T[j][1] - T[par][1])]
+                : [cE[0] + k * (T[j][0] - cT[0]), cE[1] + k * (T[j][1] - cT[1])];
+        });
+        return pos;
+    }
+    function pMaterialize(p, j) {   // потянул призрака — сначала появляются его недостающие родители, иначе кость повиснет
+        const g = pGhosts(p);
+        for (let k = j; k !== undefined && !p.body[k]; k = P_PARENT[k]) if (g[k]) p.body[k] = [g[k][0], g[k][1]];
     }
     async function poseOpen(slot, fresh) {
         const s = U.ip[slot];
@@ -648,9 +668,16 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
             P_LIMBS.forEach(([a, c], i) => { const k1 = b[a - 1], k2 = b[c - 1]; if (k1 && k2) svgIn += `<line x1="${k1[0] * W}" y1="${k1[1] * H}" x2="${k2[0] * W}" y2="${k2[1] * H}" stroke="${P_COL[i]}" stroke-opacity="${sel ? 0.75 : 0.4}" stroke-width="${r * 0.9}" stroke-linecap="round"/>`; });
             if (PS.hands) [p.left_hand, p.right_hand].forEach((h) => { if (h) P_HAND.forEach(([a, c]) => { if (h[a] && h[c]) svgIn += `<line x1="${h[a][0] * W}" y1="${h[a][1] * H}" x2="${h[c][0] * W}" y2="${h[c][1] * H}" stroke="#7af" stroke-width="${r * 0.3}"/>`; }); });
             if (PS.face && p.face) p.face.forEach((f) => { if (f) svgIn += `<circle cx="${f[0] * W}" cy="${f[1] * H}" r="${r * 0.22}" fill="#fff" fill-opacity=".7"/>`; });
+            if (PS.ghosts) {
+                const g = pGhosts(p), at = (j) => b[j] || g[j];
+                P_LIMBS.forEach(([a, c], i) => {
+                    if ((b[a - 1] && b[c - 1]) || !at(a - 1) || !at(c - 1)) return;
+                    svgIn += `<line class="gl" x1="${at(a - 1)[0] * W}" y1="${at(a - 1)[1] * H}" x2="${at(c - 1)[0] * W}" y2="${at(c - 1)[1] * H}" stroke="${P_COL[i]}" stroke-opacity="${sel ? 0.55 : 0.3}" stroke-width="${r * 0.7}" stroke-dasharray="${r * 1.6} ${r * 1.2}" stroke-linecap="round"/>`;
+                });
+                Object.entries(g).forEach(([j, q]) => { svgIn += `<circle class="pj ghost" data-p="${pi}" data-j="${j}" data-ghost="1" cx="${q[0] * W}" cy="${q[1] * H}" r="${r * 1.1}" fill="${P_COL[j]}" fill-opacity="${sel ? 0.35 : 0.18}" stroke="${P_COL[j]}"><title>${P_NAMES[j]} — не найден; потяни, чтобы добавить</title></circle>`; });
+            }
             b.forEach((k, j) => {
                 if (k) svgIn += `<circle class="pj${sel ? ' sel' : ''}" data-p="${pi}" data-j="${j}" cx="${k[0] * W}" cy="${k[1] * H}" r="${r}" fill="${P_COL[j]}"><title>${P_NAMES[j]} — тяни; Alt+клик или правый клик — убрать</title></circle>`;
-                else if (sel) { const g = pGhost(p, j); svgIn += `<circle class="pj ghost" data-p="${pi}" data-j="${j}" data-ghost="1" cx="${g[0] * W}" cy="${g[1] * H}" r="${r}" stroke="${P_COL[j]}"><title>${P_NAMES[j]} — нет на фото; потяни, чтобы добавить</title></circle>`; }
             });
         });
         return svgIn;
@@ -671,15 +698,17 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
             <b>🦴 Поза</b><span class="pills">${people}</span>
             <select data-pose-tpl title="Добавить человека по шаблону"><option value="">＋ человек…</option>${Object.keys(P_TPL).map((k) => `<option>${k}</option>`).join('')}</select>
             ${PS.photo ? '<button class="tb" data-pose="detect" title="Найти позу на фото заново (правки пропадут)">🔍 найти на фото</button>' : ''}
+            <button class="tb" data-pose="fill" title="Достроить все недостающие суставы выбранного человека (там, где пунктир)">✚ достроить</button>
             <button class="tb" data-pose="flip" title="Отзеркалить выбранного человека">⇋</button>
             <button class="tb" data-pose="del" title="Убрать выбранного человека"${PS.people.length ? '' : ' disabled'}>🗑</button>
             <button class="tb" data-pose="undo" title="Отменить (Ctrl+Z)">↶</button><button class="tb" data-pose="redo" title="Вернуть (Ctrl+Y)">↷</button>
             <label class="pchk" title="Тянуть сустав вместе со всем, что ниже (шея — весь человек)"><input type="checkbox" data-pose-opt="kids"${PS.kids ? ' checked' : ''}> с потомками</label>
+            <label class="pchk" title="Показывать пунктиром суставы, которых не нашлось на фото"><input type="checkbox" data-pose-opt="ghosts"${PS.ghosts ? ' checked' : ''}> недостающие</label>
             <label class="pchk"><input type="checkbox" data-pose-opt="hands"${PS.hands ? ' checked' : ''}> руки</label>
             <label class="pchk"><input type="checkbox" data-pose-opt="face"${PS.face ? ' checked' : ''}> лицо</label>
             ${PS.photo ? `<label class="pchk" title="Прозрачность фото">фото <input type="range" data-pose-op min="0" max="1" step="0.05" value="${PS.opacity}"></label>` : ''}
             <span class="sp"></span><button class="tb" data-pose="close">Отмена</button><button class="gen small" data-pose="done">Готово → в образец</button></div>
-            <div class="pose-msg">${esc(PS.busy || PS.msg || 'Тяни суставы. Пунктирные кружки — суставы, которых нет: потяни, чтобы добавить. Alt+клик — убрать сустав.')}</div>
+            <div class="pose-msg">${esc(PS.busy || PS.msg || 'Тяни суставы. Пунктир — суставы, которых не нашлось: потяни кружок, чтобы добавить, или «✚ достроить». Alt+клик — убрать сустав.')}</div>
             <div class="pose-stage"><div class="pose-frame">
                 ${PS.photo ? `<img src="${API}image/${PS.photo}" style="opacity:${PS.opacity}" alt="" draggable="false">` : ''}
                 <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${svgIn}</svg></div></div>`;
@@ -707,7 +736,7 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
         pSnap();
         if (e.altKey && !c.dataset.ghost) { PS.people[pi].body[j] = null; poseRender(); return; }
         PS.sel = pi;
-        if (c.dataset.ghost) PS.people[pi].body[j] = [+c.getAttribute('cx') / PS.W, +c.getAttribute('cy') / PS.H];
+        if (c.dataset.ghost) pMaterialize(PS.people[pi], j);
         PS.drag = { pi, j };
         poseRender();
     });
@@ -728,6 +757,12 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
         else if (a === 'done') poseDone();
         else if (a === 'undo' && PS.undo.length) { PS.redo.push(pclone(PS.people)); PS.people = PS.undo.pop(); PS.sel = Math.min(PS.sel, Math.max(0, PS.people.length - 1)); poseRender(); }
         else if (a === 'redo' && PS.redo.length) { PS.undo.push(pclone(PS.people)); PS.people = PS.redo.pop(); poseRender(); }
+        else if (a === 'fill' && PS.people[PS.sel]) {
+            const p = PS.people[PS.sel], g = pGhosts(p), n = Object.keys(g).length;
+            if (!n) PS.msg = 'Скелет и так целый';
+            else { pSnap(); Object.entries(g).forEach(([j, q]) => { p.body[+j] = [q[0], q[1]]; }); PS.msg = `Достроено суставов: ${n} — подвинь их как нужно`; }
+            poseRender();
+        }
         else if (a === 'del' && PS.people[PS.sel]) { pSnap(); PS.people.splice(PS.sel, 1); PS.sel = Math.max(0, PS.sel - 1); poseRender(); }
         else if (a === 'flip' && PS.people[PS.sel]) {
             pSnap();

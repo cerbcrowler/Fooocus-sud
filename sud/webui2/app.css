@@ -156,7 +156,8 @@ select, input[type=number], input[type=text] { width: 100%; background: var(--bg
 .pose-frame svg { overflow: visible; }
 circle.pj { cursor: grab; stroke: #000; stroke-width: 1; }
 circle.pj.sel { stroke: #fff; stroke-width: 2; }
-circle.pj.ghost { fill: transparent; stroke-dasharray: 4 3; stroke-width: 2; opacity: .75; }
+circle.pj.ghost { stroke-dasharray: 4 3; stroke-width: 2; }
+line.gl { pointer-events: none; }
 circle.pj:hover { stroke: var(--yel); stroke-width: 3; }
 
 /* ---------- статус Colab ---------- */
