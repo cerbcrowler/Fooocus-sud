@@ -243,11 +243,13 @@
 
 // ================= колёсико мыши на ползунках (все ползунки интерфейса) =================
 // Fooocus-sud: ползунки крутятся колёсиком мыши при наведении.
-// Шаг — шаг самого ползунка; Shift — ×10, Ctrl/Alt — точно (÷10, если шаг позволяет дробь не хуже 0.001).
+// Шаг: свой для частых ползунков (WHEEL_STEPS: веса LoRA и CFG — 0.1, резкость — 1), иначе шаг самого ползунка.
+// Shift — ×10, Ctrl/Alt — точно (родной шаг ползунка). Свой шаг ещё и выравнивает значение по сетке: 1.05 → 1.1.
 // Чтобы не «ловить» ползунки при обычной прокрутке страницы: колесо срабатывает, только если курсор
 // уже ~250 мс стоит над ползунком (или колесо уже крутили над ним только что).
 (function () {
     const HOLD_MS = 250;
+    const WHEEL_STEPS = [['.sud-lora-weight', 0.1], ['#sud-cfg', 0.1], ['#sud-sharpness', 1]];
     let hoverEl = null, hoverSince = 0, lastWheel = 0, acc = 0, accEl = null;
 
     document.addEventListener('pointerover', (e) => {
@@ -265,10 +267,12 @@
         e.preventDefault();
         lastWheel = now;
 
-        let step = parseFloat(r.step);
-        if (!step || step <= 0) step = 1;
-        if (e.shiftKey) step *= 10;
-        else if ((e.ctrlKey || e.altKey) && step / 10 >= 0.001) step /= 10;
+        let native = parseFloat(r.step);
+        if (!native || native <= 0) native = 1;
+        const custom = WHEEL_STEPS.find(([sel]) => r.closest(sel));
+        let step = custom ? custom[1] : native, snap = !!custom;
+        if (e.ctrlKey || e.altKey) { step = custom ? native : (native / 10 >= 0.001 ? native / 10 : native); snap = false; }
+        else if (e.shiftKey) step *= 10;
         const min = parseFloat(r.min || '0'), max = parseFloat(r.max || '100');
         // один щелчок колеса ≈ 100 px (в строках — ×33); тачпад шлёт мелкие порции — копим
         const px = (e.deltaY || e.deltaX) * (e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? 400 : 1);
@@ -278,7 +282,9 @@
         if (!ticks) return;
         acc -= ticks * 100;
         const prec = Math.max(decimals(r.step || 1), decimals(step));
-        let v = Math.round((parseFloat(r.value) - ticks * step) * 10 ** prec) / 10 ** prec;
+        let v = parseFloat(r.value) - ticks * step;
+        if (snap) v = (ticks < 0 ? Math.floor : Math.ceil)(v / step - 1e-9 * Math.sign(ticks)) * step;  // по сетке шага
+        v = Math.round(v * 10 ** prec) / 10 ** prec;
         v = Math.min(max, Math.max(min, v));
         if (String(v) === r.value) return;
         r.value = String(v);
