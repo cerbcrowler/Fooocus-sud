@@ -525,6 +525,16 @@ def _notify_sound():
         return True
 
 
+def _catalog_order(names, kind="CHECKPOINTS"):
+    """Модели — в порядке каталога links.txt (как отсортировал в 📦), остальные — после, по алфавиту."""
+    try:
+        from sud import ui_manager as UM
+        order = {e.filename: i for i, e in enumerate(UM._catalog().entries(kind))}
+    except Exception:
+        return list(names)
+    return sorted(names, key=lambda n: (0, order[n]) if n in order else (1, n.lower()))
+
+
 def _auto_translate():
     try:
         from sud import settings as S
@@ -541,7 +551,7 @@ def _state():
     n = _named
     lora_ctrls = n.get("loras") or []
     return {
-        "models": C.model_filenames,
+        "models": _catalog_order(C.model_filenames),
         "loras": C.lora_filenames,
         "lora_slots": len(lora_ctrls) // 3,
         "lora_min": C.default_loras_min_weight, "lora_max": C.default_loras_max_weight,

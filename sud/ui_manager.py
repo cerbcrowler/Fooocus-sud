@@ -167,6 +167,13 @@ def run(cmd, current_model=None):
             cat.set_title(url, cmd.get("title", ""))
         elif op == "note":
             cat.set_note(url, cmd.get("note", ""))
+        elif op == "reorder":
+            cat.reorder(kind, [str(u) for u in cmd.get("urls") or []])
+        elif op == "move":   # перетащили на другую категорию (и, может, в нужное место)
+            cat.set_category(url, cmd.get("category", ""))
+            if cmd.get("urls"):
+                _catalog().reorder(kind, [str(u) for u in cmd["urls"]])
+            msg = f"Перенесено в «{cmd.get('category') or 'Без категории'}»"
         elif op == "remove":
             cat.remove(url)
             msg = "Убрано из каталога (файл в Colab, если был, остался)"

@@ -191,6 +191,10 @@ class H(BaseHTTPRequestHandler):
                 x = next((x for x in MMD["items"] if x["file"] == body.get("file")), None)
                 if x: x["status"] = "none"
             elif op == "add_category": MMD["categories"].append(body.get("category"))
+            elif op in ("reorder", "move"):
+                if op == "move" and it: it["category"] = body.get("category", "")
+                want = {u: i for i, u in enumerate(body.get("urls") or [])}
+                MMD["items"].sort(key=lambda x: (0, want[x["url"]]) if x["url"] in want else (1, 0))
             elif op == "add": MMD["items"].append({"url": body["url"], "file": body["url"].rsplit("/", 1)[-1], "title": body.get("title") or body["url"].rsplit("/", 1)[-1], "category": body.get("category", ""), "note": "", "autoload": bool(body.get("star")), "status": "downloading" if body.get("download_now") else "none", "size": 6.6e9, "done": 0, "speed": 0, "error": "", "drive": False})
             print("models:", op, body.get("url") or body.get("file") or "")
             return self._send(200, dict(MMD, message="ok: " + str(op)))

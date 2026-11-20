@@ -958,7 +958,8 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
                 <label class="wide">Заметка <input type="text" data-mm-f="note" value="${esc(it.note || '')}" placeholder="например: мой основной, для аниме…"></label>
                 <button class="btn-s danger${MM.sure === 'rm:' + k ? ' sure' : ''}" data-mm-rm="${k}" title="Строка исчезнет из links.txt; файл в Colab (если есть) останется">${MM.sure === 'rm:' + k ? 'точно убрать?' : 'убрать из каталога'}</button></div>`;
         };
-        const rows = list.map((it) => `<div class="mm-r${it.current ? ' cur' : ''}">
+        const rows = list.map((it) => `<div class="mm-r${it.current ? ' cur' : ''}" data-k="${esc(mmKey(it))}" data-cat="${esc(it.category == null ? OUTC : it.category)}">
+              ${it.url ? '<span class="mm-grip" title="Потяни: поменять порядок или перенести на категорию слева">⋮⋮</span>' : '<span></span>'}
               ${it.url ? `<button class="mm-star${it.autoload ? ' on' : ''}" data-mm-star="${esc(mmKey(it))}" title="${it.autoload ? 'Качается при старте Colab — клик, чтобы не качать' : 'Качать при старте Colab'}">${it.autoload ? '★' : '☆'}</button>` : '<span class="mm-star none" title="Файла нет в каталоге links.txt">·</span>'}
               <div class="mm-t"><b>${esc(it.title)}</b>${it.category ? `<span class="mm-cat">${esc(it.category)}</span>` : ''}<small>${esc(it.file)}${it.note ? ' · ' + esc(it.note) : ''}</small></div>
               ${st(it)}<span class="mm-sz">${gbS(it.size)}</span><div class="mm-a">${acts(it)}</div></div>${more(it)}`).join('');
@@ -982,6 +983,47 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
         const nc = $('.mm-newcat'); if (nc) nc.focus();
     }
     const mmFind = (k) => MM.data.items.find((it) => mmKey(it) === k);
+    // перетаскивание строк: порядок внутри категории (links.txt) или перенос на категорию слева
+    document.addEventListener('pointerdown', (e) => {
+        const g = e.target.closest && e.target.closest('.mm-grip');
+        if (!g || e.button !== 0) return;
+        e.preventDefault();
+        const row = g.closest('.mm-r'), it = mmFind(row.dataset.k);
+        let drop = null;   // {row, after} или {cat}
+        row.classList.add('dragging'); document.body.classList.add('resizing');
+        const clear = () => document.querySelectorAll('.mm-r.drop-a, .mm-r.drop-b, .mm-c.drop').forEach((x) => x.classList.remove('drop-a', 'drop-b', 'drop'));
+        const move = (ev) => {
+            clear(); drop = null;
+            const el = document.elementFromPoint(ev.clientX, ev.clientY);
+            const c = el && el.closest('.mm-c[data-mm-cat]');
+            if (c && ![ALLC, OUTC].includes(c.dataset.mmCat)) { c.classList.add('drop'); drop = { cat: c.dataset.mmCat }; return; }
+            const r = el && el.closest('.mm-r[data-k]');
+            if (!r || r === row || r.dataset.cat === OUTC) return;
+            const b = r.getBoundingClientRect(), after = ev.clientY > b.top + b.height / 2;
+            r.classList.add(after ? 'drop-b' : 'drop-a'); drop = { row: r, after };
+        };
+        const up = () => {
+            document.removeEventListener('pointermove', move);
+            row.classList.remove('dragging'); document.body.classList.remove('resizing'); clear();
+            if (!drop) return;
+            const items = MM.data.items;
+            if (drop.cat !== undefined) {
+                if (drop.cat === it.category) return;
+                it.category = drop.cat; renderMM();
+                mmLoad({ op: 'move', url: it.url, category: drop.cat });
+                return;
+            }
+            const target = mmFind(drop.row.dataset.k), cat = target.category;
+            const arr = items.filter((x) => x !== it);
+            arr.splice(arr.indexOf(target) + (drop.after ? 1 : 0), 0, it);
+            it.category = cat; MM.data.items = arr; renderMM();   // сразу на экране, потом — с сервера
+            const urls = arr.filter((x) => x.url && x.category === cat).map((x) => x.url);
+            mmLoad(drop.row.dataset.cat === row.dataset.cat
+                ? { op: 'reorder', urls } : { op: 'move', url: it.url, category: cat, urls });
+        };
+        document.addEventListener('pointermove', move);
+        document.addEventListener('pointerup', up, { once: true });
+    });
     document.addEventListener('click', async (e) => {
         const t = e.target.closest && e.target.closest('#mm button');
         if (!t) return;

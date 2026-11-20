@@ -185,7 +185,12 @@ label.srow { justify-content: flex-start; cursor: pointer; }
 .mm-add label { display: flex; gap: 4px; align-items: center; color: var(--fg2); }
 .mm-msg { font-size: 12px; color: var(--fg2); padding: 4px 2px 8px; }
 .mm-list { flex: 1; min-height: 0; overflow: auto; border-top: 1px solid var(--line); }
-.mm-r { display: grid; grid-template-columns: 24px minmax(0, 1fr) 130px 64px auto; gap: 10px; align-items: center; padding: 7px 4px; border-bottom: 1px solid var(--line); }
+.mm-r { display: grid; grid-template-columns: 12px 24px minmax(0, 1fr) 130px 64px auto; gap: 10px; align-items: center; padding: 7px 4px; border-bottom: 1px solid var(--line); }
+.mm-grip { color: var(--dim2); cursor: grab; font-size: 11px; letter-spacing: -2px; user-select: none; touch-action: none; }
+.mm-grip:hover { color: var(--acc); }
+.mm-r.dragging { opacity: .4; }
+.mm-r.drop-a { box-shadow: inset 0 2px 0 var(--acc); } .mm-r.drop-b { box-shadow: inset 0 -2px 0 var(--acc); }
+.mm-c.drop { outline: 2px dashed var(--acc); background: var(--acc-bg); }
 .mm-r.cur { background: color-mix(in srgb, var(--acc-bg) 60%, transparent); }
 .mm-star { border: 0; background: transparent; font-size: 16px; color: var(--dim2); padding: 0; }
 .mm-star.on { color: var(--yel); } .mm-star.none { text-align: center; color: var(--line2); }
@@ -198,7 +203,7 @@ label.srow { justify-content: flex-start; cursor: pointer; }
 .mm-sz { font-size: 12px; color: var(--dim); text-align: right; }
 .mm-a { display: flex; gap: 4px; justify-content: flex-end; }
 .btn-s.on { color: var(--acc); border-color: var(--acc); }
-.mm-more { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; padding: 8px 10px 10px 38px; border-bottom: 1px solid var(--line); background: var(--card); font-size: 12px; }
+.mm-more { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; padding: 8px 10px 10px 56px; border-bottom: 1px solid var(--line); background: var(--card); font-size: 12px; }
 .mm-more label { display: grid; gap: 3px; color: var(--dim); } .mm-more .wide { grid-column: 1 / -1; }
 .mm-more .danger { justify-self: start; }
 .mm-foot { display: flex; justify-content: space-between; gap: 10px; font-size: 11.5px; color: var(--dim2); padding-top: 8px; }

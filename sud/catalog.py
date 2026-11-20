@@ -102,6 +102,12 @@ class Catalog:
 
     def save(self):
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        if os.path.isfile(self.path):   # прошлая версия рядом — на случай ошибки
+            try:
+                import shutil
+                shutil.copy2(self.path, self.path + ".bak")
+            except OSError:
+                pass
         tmp = self.path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             f.write("\n".join(self.lines).rstrip("\n") + "\n")
@@ -262,6 +268,25 @@ class Catalog:
         del self.lines[e.line]
         self.save()
         return True
+
+    def reorder(self, kind, urls):
+        """Новый порядок строк внутри каждой категории (перетаскивание в менеджере).
+        Строки меняются местами только в своих «гнёздах» — заголовки, комментарии и пустые строки не трогаются."""
+        es = self.entries(kind)
+        want = {u: i for i, u in enumerate(urls)}
+        changed = False
+        for cat in {e.category for e in es}:
+            group = [e for e in es if e.category == cat]
+            slots = [e.line for e in group]
+            order = sorted(group, key=lambda e: (0, want[e.url]) if e.url in want else (1, e.line))
+            new = [self.lines[e.line] for e in order]
+            for i, text in zip(slots, new):
+                if self.lines[i] != text:
+                    self.lines[i] = text
+                    changed = True
+        if changed:
+            self.save()
+        return changed
 
     def set_category(self, url, category):
         e = self.find(url)
