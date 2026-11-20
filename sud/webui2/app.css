@@ -99,6 +99,10 @@ select, input[type=number], input[type=text] { width: 100%; background: var(--bg
 .pill:hover { border-color: var(--acc); }
 .pill.on { border-color: var(--acc); color: var(--acc); background: var(--acc-bg); }
 .pill .star { color: var(--yel); margin-left: 3px; }
+.pills[data-kind] .pill { touch-action: none; user-select: none; }
+.pill.dragging { opacity: .4; }
+.pill.drop-l { box-shadow: -3px 0 0 var(--acc); }
+.pill.drop-r { box-shadow: 3px 0 0 var(--acc); }
 .half { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
 .lora { display: grid; grid-template-columns: 12px 18px minmax(0, 1fr) 18px; gap: 4px 6px; align-items: center; margin: 4px 0; padding: 3px 0; border-radius: 6px; }
 .lora .grip { color: var(--dim2); cursor: grab; font-size: 11px; letter-spacing: -2px; user-select: none; touch-action: none; }

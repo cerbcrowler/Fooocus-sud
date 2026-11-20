@@ -66,7 +66,7 @@
             return `<button class="pill${on ? ' on' : ''}" data-sp="${esc(p.name)}" title="${esc(p.note || '')}">${esc(p.name)}</button>`;
         }).join('');
         html += card('sampling', '<b>Сэмплинг</b>', `${U.sampler} · ${U.scheduler} · ${U.steps < 0 ? 'авто' : U.steps}`,
-            `<div class="pills">${sp || '<span class="hint">пресетов нет</span>'}</div>
+            `<div class="pills" data-kind="sampling" title="Пресеты можно перетаскивать — порядок сохранится">${sp || '<span class="hint">пресетов нет</span>'}</div>
              <div class="half"><select data-u="sampler">${opts(S.samplers, U.sampler)}</select><select data-u="scheduler">${opts(S.schedulers, U.scheduler)}</select></div>
              ${range('steps', 'Шаги', -1, 60, 1, U.steps)}${range('cfg', 'CFG', 1, 15, 0.1, U.cfg)}${range('sharpness', 'Резкость', 0, 30, 1, U.sharpness)}`);
         // LoRA
@@ -76,7 +76,7 @@
             <button class="x" data-lora-del="${i}" title="Убрать">✕</button>
             <div class="w"><input type="range" data-lora-w="${i}" min="${S.lora_min}" max="${S.lora_max}" step="0.1" value="${w}"><output>${(+w).toFixed(1)}</output></div></div>`).join('');
         html += card('loras', '<b>LoRA</b>', `${U.loras.filter((l) => l[0]).length} из ${S.lora_slots}`,
-            `<div class="pills">${lp}</div><div class="loras">${rows}</div>${U.loras.length < S.lora_slots
+            `<div class="pills" data-kind="loras">${lp}</div><div class="loras">${rows}</div>${U.loras.length < S.lora_slots
                 ? '<button class="add" data-act="lora-add">＋ Добавить LoRA</button>'
                 : `<div class="add full" title="Больше слотов: ⚙️ Настройки классического интерфейса → «Слотов LoRA»">Все ${S.lora_slots} слота заняты · убери лишнюю ✕ или добавь слотов в ⚙️ Настройках</div>`}`);
         // Разрешение
@@ -315,6 +315,52 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
     document.addEventListener('keydown', (e) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); generate(); }
     });
+    // ---------- пресеты: перетаскивание пилюль (порядок сохраняется на Drive, виден и в классическом) ----------
+    let suppressClick = false;
+    document.addEventListener('pointerdown', (e) => {
+        const pill = e.target.closest && e.target.closest('.pills[data-kind] .pill');
+        if (!pill || e.button !== 0) return;
+        const box = pill.parentElement, kind = box.dataset.kind;
+        const pills = [...box.querySelectorAll('.pill')], from = pills.indexOf(pill);
+        const x0 = e.clientX, y0 = e.clientY;
+        let dragging = false, to = from, after = false;
+        const move = (ev) => {
+            if (!dragging) {
+                if (Math.abs(ev.clientX - x0) + Math.abs(ev.clientY - y0) < 6) return;
+                dragging = true; pill.classList.add('dragging'); document.body.classList.add('resizing');
+            }
+            let best = Infinity;
+            pills.forEach((p, i) => {
+                const r = p.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+                const d = Math.hypot(ev.clientX - cx, (ev.clientY - cy) * 2);
+                if (d < best) { best = d; to = i; after = ev.clientX > cx; }
+            });
+            pills.forEach((p, i) => { p.classList.toggle('drop-l', i === to && !after); p.classList.toggle('drop-r', i === to && after); });
+        };
+        const up = async () => {
+            document.removeEventListener('pointermove', move);
+            document.body.classList.remove('resizing');
+            pills.forEach((p) => p.classList.remove('dragging', 'drop-l', 'drop-r'));
+            if (!dragging) return;
+            suppressClick = true;
+            const key = kind === 'sampling' ? 'sampling_presets' : 'lora_presets';
+            const list = SRV[key].slice();
+            let dst = to + (after ? 1 : 0);
+            const [x] = list.splice(from, 1);
+            if (dst > from) dst--;
+            list.splice(dst, 0, x);
+            if (kind === 'loras' && !rawGet('sud-pr-loras-start') && SRV[key][0]) {
+                try { localStorage.setItem('sud-pr-loras-start', SRV[key][0].name); } catch (er) { /* */ }   // ★ не «переезжает» за первым
+            }
+            SRV[key] = list; renderRight();
+            try { const r = await api('presets/order', { kind, names: list.map((p) => p.name) }); SRV[key] = r.presets; renderRight(); }
+            catch (er) { alert('Порядок не сохранился: ' + er.message); refreshState().then(renderRight); }
+        };
+        document.addEventListener('pointermove', move);
+        document.addEventListener('pointerup', up, { once: true });
+    });
+    document.addEventListener('click', (e) => { if (suppressClick) { suppressClick = false; e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+
     // ---------- LoRA: перетаскивание строк за ⋮⋮ ----------
     document.addEventListener('pointerdown', (e) => {
         const grip = e.target.closest && e.target.closest('.lora .grip');

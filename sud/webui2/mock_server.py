@@ -111,6 +111,11 @@ class H(BaseHTTPRequestHandler):
             if t:
                 t["stop"] = True
             return self._send(200, {"ok": True})
+        if p == "/sud/api/presets/order":
+            key = {"sampling": "sampling_presets", "loras": "lora_presets"}[body["kind"]]
+            by = {x["name"]: x for x in STATE[key]}
+            STATE[key] = [by.pop(n) for n in body["names"] if n in by] + list(by.values())
+            return self._send(200, {"ok": True, "presets": STATE[key]})
         if p == "/sud/api/translate":
             return self._send(200, {"text": "[перевод-заглушка] " + body.get("text", ""), "engine": "mock", "warn": ""})
         return self._send(404, {"error": "нет"})

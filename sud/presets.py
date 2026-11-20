@@ -92,6 +92,15 @@ class Store:
         self.save(presets)
         return ""
 
+    def reorder(self, names):
+        """Новый порядок по списку имён; неизвестные имена пропускаются, не упомянутые — в конец."""
+        presets = self.load()
+        by = {p["name"]: p for p in presets}
+        out = [by.pop(n) for n in names if n in by]
+        out += [p for p in presets if p["name"] in by]
+        self.save(out)
+        return ""
+
     def get(self, name):
         presets = self.load()
         i = self._find(presets, name)
