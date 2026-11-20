@@ -689,7 +689,7 @@ def worker():
             return direct_return, uov_input_image, None, None, None, None, None, current_progress
 
         tiled = True
-        denoising_strength = 0.28 if use_tiled_detail else 0.382
+        denoising_strength = 0.35 if use_tiled_detail else 0.382  # Fooocus-sud: 0.35 — по тесту 2026-11-20
         if async_task.overwrite_upscale_strength > 0:
             denoising_strength = async_task.overwrite_upscale_strength
         if use_tiled_detail:
