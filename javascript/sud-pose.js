@@ -33,7 +33,7 @@
     const tplPerson = (name, dx = 0) => ({ body: TPL[name].map(([x, y]) => [x / 420 + dx, y / 420]), left_hand: null, right_hand: null, face: null, hidden: false });
 
     // ---------- состояние ----------
-    let S = { people: [], sel: 0, lock: true, whole: true, hands: true, face: true, opacity: 0.4 };
+    let S = { people: [], sel: 0, lock: true, whole: true, hands: true, face: true, opacity: 0.4, ghosts: true };
     try { const v = JSON.parse(localStorage.getItem(LS) || 'null'); if (v && Array.isArray(v.people)) S = Object.assign(S, v); } catch (e) { /* ignore */ }
     let photo = null;            // {url, w, h}
     let open = false, busy = '', msg = '', drag = null, undo = [], redo = [];
@@ -178,6 +178,44 @@
         return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
     }
 
+    // ---------- недостающие суставы («призраки») ----------
+    // Шаблон «Стоит» подгоняется (сдвиг + масштаб) к найденным суставам; недостающий сустав ставится
+    // от родителя на шаблонный вектор — так рука/нога вырастает из своего плеча/бедра.
+    const ORDER = [1, 0, 2, 5, 8, 11, 3, 6, 9, 12, 4, 7, 10, 13, 14, 15, 16, 17];
+    function ghosts(p) {
+        const T = TPL['Стоит'].map(([x, y]) => [x / 420, y / 420]);
+        const have = p.body.map((q, j) => (q ? j : -1)).filter((j) => j >= 0);
+        if (have.length === p.body.length) return {};
+        const mean = (pts) => [pts.reduce((a, q) => a + q[0], 0) / pts.length, pts.reduce((a, q) => a + q[1], 0) / pts.length];
+        let k = 1, cE = [0.5, 0.5], cT = mean(T);
+        if (have.length) {
+            cE = mean(have.map((j) => p.body[j])); cT = mean(have.map((j) => T[j]));
+            if (have.length >= 2) {
+                const dE = have.reduce((a, j) => a + (p.body[j][0] - cE[0]) ** 2 + (p.body[j][1] - cE[1]) ** 2, 0);
+                const dT = have.reduce((a, j) => a + (T[j][0] - cT[0]) ** 2 + (T[j][1] - cT[1]) ** 2, 0);
+                if (dT > 1e-6) k = Math.sqrt(dE / dT);
+            }
+        }
+        const pos = {}, out = {};
+        const at = (j) => p.body[j] || pos[j];
+        ORDER.forEach((j) => {
+            if (p.body[j]) return;
+            const par = PARENT[j];
+            pos[j] = par !== undefined && at(par)
+                ? [at(par)[0] + k * (T[j][0] - T[par][0]), at(par)[1] + k * (T[j][1] - T[par][1])]
+                : [cE[0] + k * (T[j][0] - cT[0]), cE[1] + k * (T[j][1] - cT[1])];
+            out[j] = pos[j];
+        });
+        return out;
+    }
+    function materialize(p, j) {
+        const g = ghosts(p);
+        // сначала родители-призраки, иначе сустав повиснет без кости
+        const chain = [];
+        for (let k = j; k !== undefined && !p.body[k]; k = PARENT[k]) chain.unshift(k);
+        chain.forEach((k) => { if (g[k]) p.body[k] = [g[k][0], g[k][1]]; });
+    }
+
     // ---------- отрисовка ----------
     function overlay() {
         let o = document.querySelector('.sud-pose');
@@ -209,10 +247,21 @@
                 });
             });
             if (S.face && p.face) p.face.forEach((q) => { if (q) s += `<circle cx="${sx(q[0])}" cy="${sy(q[1])}" r="${Math.max(2, stroke / 3)}" fill="#fff"/>`; });
+            if (S.ghosts && pi === S.sel) {
+                const g = ghosts(p), at = (j) => p.body[j] || g[j];
+                LIMBS.forEach(([a, b]) => {
+                    const i1 = a - 1, i2 = b - 1;
+                    if ((p.body[i1] && p.body[i2]) || !at(i1) || !at(i2)) return;
+                    s += `<line x1="${sx(at(i1)[0])}" y1="${sy(at(i1)[1])}" x2="${sx(at(i2)[0])}" y2="${sy(at(i2)[1])}" stroke="#a89984" stroke-opacity="0.45" stroke-width="${stroke}" stroke-dasharray="${stroke * 2} ${stroke * 1.5}" stroke-linecap="round" pointer-events="none"/>`;
+                });
+                Object.entries(g).forEach(([j, q]) => {
+                    s += `<circle cx="${sx(q[0])}" cy="${sy(q[1])}" r="${stroke * 1.4}" fill="#a89984" fill-opacity="0.35" stroke="#d5c4a1" stroke-opacity="0.8" stroke-width="1.5" stroke-dasharray="3 3" class="sud-pose-g" data-p="${pi}" data-j="${j}"><title>${NAMES[j]} — не найден. Потяни, чтобы добавить</title></circle>`;
+                });
+            }
             p.body.forEach((q, j) => {
                 if (!q) return;
                 const on = drag && drag.p === pi && drag.j === j;
-                s += `<circle cx="${sx(q[0])}" cy="${sy(q[1])}" r="${stroke * (on ? 2.1 : 1.5)}" fill="rgb(${COLORS[j]})" stroke="${on ? '#fbf1c7' : '#1d2021'}" stroke-width="${on ? 3 : 1.5}" class="sud-pose-j" data-p="${pi}" data-j="${j}"><title>${NAMES[j]}</title></circle>`;
+                s += `<circle cx="${sx(q[0])}" cy="${sy(q[1])}" r="${stroke * (on ? 2.1 : 1.5)}" fill="rgb(${COLORS[j]})" stroke="${on ? '#fbf1c7' : '#1d2021'}" stroke-width="${on ? 3 : 1.5}" class="sud-pose-j" data-p="${pi}" data-j="${j}"><title>${NAMES[j]} · правый клик — убрать</title></circle>`;
             });
             s += '</g>';
         });
@@ -256,11 +305,13 @@
                 ${photo ? `<img class="sud-pose-photo" src="${photo.url}" style="opacity:${S.opacity}" alt="">` : ''}
                 <svg class="sud-pose-svg" preserveAspectRatio="none"></svg>
                 ${busy ? `<div class="sud-pose-busy">${esc(busy)}</div>` : ''}</div>
-                <div class="sud-pose-tip">${msg ? esc(msg) : 'Тяни сустав · тяни линию — двигается весь человек · Delete — удалить выбранного'}</div></div>
+                <div class="sud-pose-tip">${msg ? esc(msg) : 'Тяни сустав · серый пунктирный — недостающий, потяни чтобы добавить · правый клик — убрать сустав · тяни линию — весь человек'}</div></div>
             <div class="sud-pose-side">
                 <div><div class="sud-pose-sec">Люди</div>${people}</div>
                 <div><div class="sud-pose-sec">Инструменты</div>${tg('lock', 'Фиксировать длину костей')}${tg('whole', 'Двигать конечность целиком')}
-                    <div class="sud-pose-chips"><button type="button" class="sud-pose-pill" data-act="flip">⇋ Отразить</button></div></div>
+                    ${tg('ghosts', 'Показывать недостающие суставы')}
+                    <div class="sud-pose-chips"><button type="button" class="sud-pose-pill" data-act="fill" title="Сделать скелет выбранного целым: все недостающие суставы по пропорциям">Достроить всё</button><button type="button" class="sud-pose-pill" data-act="flip">⇋ Отразить</button></div>
+                    <div class="sud-pose-hint" style="margin-top:6px">Серые пунктирные — суставы, которых DWPose не нашёл. Не трогаешь — модель придумает их сама; потянешь — станут частью позы. Правый клик по суставу — убрать.</div></div>
                 <div><div class="sud-pose-sec">Шаблоны (заменят выбранного)</div><div class="sud-pose-chips">${Object.keys(TPL).map((t) => `<button type="button" class="sud-pose-pill" data-tpl="${t}">${t}</button>`).join('')}</div></div>
                 <div><div class="sud-pose-sec">Слои</div>
                     ${photo ? `<div class="sud-pose-sl">Фото<input type="range" min="0" max="100" value="${Math.round(S.opacity * 100)}" data-opt="opacity"><span>${Math.round(S.opacity * 100)}%</span></div>` : '<div class="sud-pose-hint">Фото нет — только скелет</div>'}
@@ -285,6 +336,16 @@
     document.addEventListener('pointerdown', (e) => {
         if (!open || !e.target.closest || !e.target.closest('.sud-pose-svg')) return;
         const [x, y] = pt(e);
+        if (e.button === 2) return;   // правый клик — это «убрать сустав» (contextmenu)
+        const g = e.target.closest('.sud-pose-g');
+        if (g) {
+            snapshot();
+            const pi = +g.dataset.p, gj = +g.dataset.j;
+            materialize(S.people[pi], gj);
+            drag = { p: pi, j: gj, x, y };
+            S.sel = pi;
+            e.preventDefault(); render(); return;
+        }
         const j = e.target.closest('.sud-pose-j');
         if (j) {
             snapshot();
@@ -328,6 +389,20 @@
     });
     document.addEventListener('pointerup', () => { if (drag) { drag = null; save(); render(); } });
 
+    document.addEventListener('contextmenu', (e) => {
+        const j = open && e.target.closest && e.target.closest('.sud-pose-j');
+        if (!j) return;
+        e.preventDefault();
+        snapshot();
+        const p = S.people[+j.dataset.p], k = +j.dataset.j;
+        p.body[k] = null;
+        if (k === 4) p.right_hand = null;
+        if (k === 7) p.left_hand = null;
+        if (k === 0) p.face = null;
+        msg = `Убран: ${NAMES[k]} — модель придумает его сама`;
+        save(); render();
+    });
+
     // ---------- кнопки ----------
     document.addEventListener('click', (e) => {
         if (!e.target.closest) return;
@@ -354,6 +429,14 @@
         if (a === 'hide') { snapshot(); const p = S.people[+btn.dataset.i]; p.hidden = !p.hidden; save(); render(); return; }
         if (a === 'del') { snapshot(); S.people.splice(+btn.dataset.i, 1); S.sel = Math.max(0, Math.min(S.sel, S.people.length - 1)); save(); render(); return; }
         if (a === 'add') { snapshot(); S.people.push(tplPerson('Стоит', (S.people.length % 3 - 1) * 0.28)); S.sel = S.people.length - 1; save(); render(); return; }
+        if (a === 'fill' && S.people[S.sel]) {
+            const p = S.people[S.sel], g = ghosts(p), n = Object.keys(g).length;
+            if (!n) { msg = 'Скелет и так целый'; render(); return; }
+            snapshot();
+            Object.entries(g).forEach(([j, q]) => { p.body[+j] = [q[0], q[1]]; });
+            msg = `Достроено суставов: ${n}`;
+            save(); render(); return;
+        }
         if (a === 'flip' && S.people[S.sel]) {
             snapshot();
             const p = S.people[S.sel], b = bbox(p), cx = b ? (b[0] + b[2]) / 2 : 0.5;
