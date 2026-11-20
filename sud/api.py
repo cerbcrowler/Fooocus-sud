@@ -9,6 +9,7 @@
     GET  /sud/api/image/<key>     готовая картинка
     POST /sud/api/translate       {text} → перевод RU→EN (как кнопка RU→EN)
     POST /sud/api/presets/order   {kind: sampling|loras, names: [...]} → новый порядок пресетов (Drive)
+    GET  /sud/api/embeddings      эмбеддинги (папки, превью, избранное…), POST {op: fav|neg|used} — изменить
 
 Генерация идёт через ту же очередь, что кнопка Generate (modules.async_worker.async_tasks).
 Аргументы AsyncTask собираются из значений по умолчанию всех полей Gradio (ctrls) + того, что
@@ -355,6 +356,17 @@ def _routes(app):
         store.reorder([str(n) for n in body.get("names") or []])
         return JSONResponse({"ok": True, "presets": store.load()})
 
+    async def embeddings(request: Request):
+        """GET — список (как панель 🧬 в классическом), POST {op: fav|neg|used, name, on} — изменить."""
+        from sud import ui_embeddings as E
+        import asyncio
+        if request.method == "POST":
+            body = await request.json()
+            out = await asyncio.get_event_loop().run_in_executor(None, E.apply, json.dumps(body))
+        else:
+            out = await asyncio.get_event_loop().run_in_executor(None, E.state)
+        return Response(out, media_type="application/json")
+
     async def to_index():
         return RedirectResponse("/sud/")
 
@@ -368,6 +380,7 @@ def _routes(app):
     app.add_api_route("/sud/api/image/{key}", image, methods=["GET"])
     app.add_api_route("/sud/api/translate", translate, methods=["POST"])
     app.add_api_route("/sud/api/presets/order", presets_order, methods=["POST"])
+    app.add_api_route("/sud/api/embeddings", embeddings, methods=["GET", "POST"])
     # наши маршруты — первыми, чтобы общие маршруты Gradio их не перехватили
     ours = [r for r in app.router.routes if getattr(r, "path", "").startswith("/sud")]
     for r in ours:

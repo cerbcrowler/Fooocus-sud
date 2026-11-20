@@ -228,7 +228,7 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
     }
     function renderStrip() {
         applyStrip();
-        $('#strip').innerHTML = history.slice(0, 30).map((h, i) => `<img src="${h.url}" data-h="${i}" class="${current && current.key === h.key ? 'on' : ''}" title="seed ${h.seed}" loading="lazy">`).join('');
+        $('#strip').innerHTML = (history.length ? '<button class="strip-x" data-strip-hide title="Спрятать ленту (вернуть — чип «▸ лента» у промпта)">▾</button>' : '') + history.slice(0, 30).map((h, i) => `<img src="${h.url}" data-h="${i}" class="${current && current.key === h.key ? 'on' : ''}" title="seed ${h.seed}" loading="lazy">`).join('');
         $('#gallery').innerHTML = history.map((h, i) => `<img src="${h.url}" data-h="${i}" title="seed ${h.seed}\n${esc(h.prompt)}" loading="lazy">`).join('') || '<div class="hint">Пока пусто</div>';
     }
 
@@ -265,6 +265,7 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
         if (t.id === 'btn-gen') { generate(); return; }
         if (t.id === 'st-save') { onSaveButton(); return; }
         if (t.id === 'btn-stop' && running) { api('task/' + running.id + '/stop', {}); return; }
+        if (t.dataset.stripHide !== undefined) { U.stripHidden = true; save(); applyStrip(); return; }
         if (t.id === 'chip-strip') { U.stripHidden = !U.stripHidden; save(); applyStrip(); return; }
         if (t.id === 'chip-neg') { U.showNeg = !U.showNeg; save(); $('#neg-row').hidden = !U.showNeg; t.classList.toggle('on', U.showNeg); return; }
         if (t.id === 'chip-cam') { U.closed.camera = false; save(); renderRight(); $('[data-card="camera"]').scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
@@ -322,6 +323,101 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
     document.addEventListener('keydown', (e) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); generate(); }
     });
+    // ---------- 🧬 эмбеддинги (данные — /sud/api/embeddings = sud/ui_embeddings.py) ----------
+    const EM = { data: null, open: false, filter: 'all', q: '', folder: U.emFolder || 'all', caret: null, loading: false };
+    const reEsc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const tokRe = (n) => new RegExp(`\\(?embedding:${reEsc(n)}(?![\\w.-])(?::[\\d.]+)?\\)?`, 'i');
+    const emIn = (it) => tokRe(it.name).test($(it.neg ? '#negative' : '#prompt').value);
+    function emToggle(it, atCaret) {
+        const ta = $(it.neg ? '#negative' : '#prompt');
+        if (it.neg && !U.showNeg) { U.showNeg = true; $('#neg-row').hidden = false; $('#chip-neg').classList.add('on'); }
+        let v = ta.value;
+        if (tokRe(it.name).test(v)) {
+            v = v.replace(new RegExp(`\\s*\\(?embedding:${reEsc(it.name)}(?![\\w.-])(?::[\\d.]+)?\\)?\\s*,?`, 'i'), ' ')
+                .replace(/\s{2,}/g, ' ').replace(/^\s*,\s*/, '').replace(/,\s*,/g, ',').trim().replace(/,$/, '').trim();
+        } else {
+            const tok = `embedding:${it.name}`;
+            if (atCaret && !it.neg && EM.caret !== null && EM.caret <= v.length) {
+                const a = v.slice(0, EM.caret), b = v.slice(EM.caret);
+                const pre = a && !/[\s,(]$/.test(a) ? ', ' : (a && !/\s$/.test(a) ? ' ' : ''), post = b && !/^[\s,)]/.test(b) ? ', ' : '';
+                v = a + pre + tok + post + b; EM.caret = (a + pre + tok).length;
+            } else v = v.trim() ? `${tok}, ${v.replace(/^\s+/, '')}` : tok;
+            api('embeddings', { op: 'used', name: it.name }).then((d) => { EM.data = d; }).catch(() => {});
+        }
+        ta.value = v; U[it.neg ? 'negative' : 'prompt'] = v; save();
+        renderEm();
+    }
+    const emTree = () => {
+        const s = new Set();
+        EM.data.items.forEach((it) => { const p = (it.folder || '').split('/').filter(Boolean); p.forEach((_, i) => s.add(p.slice(0, i + 1).join('/'))); });
+        return [...s].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true }));
+    };
+    const under = (it, f) => it.folder === f || (it.folder || '').startsWith(f + '/');
+    function renderEm() {
+        const box = $('#em');
+        if (!EM.open) { box.hidden = true; return; }
+        box.hidden = false;
+        if (!EM.data) { box.innerHTML = `<div class="hint" style="padding:16px">${EM.loading ? 'Загружаю эмбеддинги… (первый раз — превью с Drive, до минуты)' : 'Не получилось загрузить список'}</div>`; return; }
+        const keepSearch = document.activeElement && document.activeElement.matches('.em-search');
+        const D = EM.data, ql = EM.q.trim().toLowerCase(), tree = emTree();
+        if (!['all', 'rec', 'fav', '__root'].includes(EM.folder) && !tree.includes(EM.folder)) EM.folder = 'all';
+        const byName = Object.fromEntries(D.items.map((i) => [i.name, i]));
+        let pool = D.items, title = 'Все';
+        if (!ql) {
+            if (EM.folder === 'rec') { pool = D.recent.map((n) => byName[n]).filter(Boolean); title = 'Недавние'; }
+            else if (EM.folder === 'fav') { pool = D.items.filter((i) => i.fav); title = '★ Избранное'; }
+            else if (EM.folder === '__root') { pool = D.items.filter((i) => !i.folder); title = 'Без папки'; }
+            else if (EM.folder !== 'all') { pool = D.items.filter((i) => under(i, EM.folder)); title = EM.folder; }
+        }
+        const list = pool.filter((it) => (EM.filter === 'all' || (EM.filter === 'pos' && !it.neg) || (EM.filter === 'neg' && it.neg)) && (!ql || it.name.toLowerCase().includes(ql)));
+        const row = (k, t, n, d = 0) => `<button class="em-f${EM.folder === k ? ' on' : ''}" data-em-folder="${esc(k)}" style="padding-left:${8 + d * 12}px"><span>${esc(t)}</span><i>${n}</i></button>`;
+        const side = row('all', 'Все', D.items.length) + row('rec', 'Недавние', D.recent.filter((n) => byName[n]).length) + row('fav', '★ Избранное', D.items.filter((i) => i.fav).length)
+            + tree.map((f) => row(f, '📁 ' + f.split('/').pop(), D.items.filter((i) => under(i, f)).length, f.split('/').length - 1)).join('')
+            + (D.items.some((i) => !i.folder) ? row('__root', 'Без папки', D.items.filter((i) => !i.folder).length) : '');
+        const tiles = list.map((it) => {
+            const used = emIn(it);
+            return `<div class="em-t${used ? ' used' : ''}${it.sdxl === false ? ' dim' : ''}" data-em="${esc(it.name)}" title="${esc(it.name)}${it.folder ? '\n📁 ' + esc(it.folder) : ''}${used ? '\nуже в промпте — клик уберёт' : ''}">
+                <div class="em-img">${it.thumb ? `<img src="${it.thumb}" alt="" loading="lazy">` : '🧬'}</div><div class="em-n">${esc(it.name)}</div>
+                ${it.neg ? '<span class="em-b neg">neg</span>' : ''}${it.sdxl === false ? '<span class="em-b sd">SD1.5</span>' : ''}${used ? '<span class="em-b in">в промпте</span>' : ''}
+                <button class="em-star${it.fav ? ' on' : ''}" data-em-fav="${esc(it.name)}" title="Избранное">★</button>
+                <button class="em-flip" data-em-neg="${esc(it.name)}" title="${it.neg ? 'Сделать позитивным' : 'Сделать негативным'}">±</button></div>`;
+        }).join('');
+        const chips = [['all', 'Все'], ['pos', 'Позитивные'], ['neg', 'Негативные']].map(([k, t]) => `<button class="pill${EM.filter === k ? ' on' : ''}" data-em-filter="${k}">${t}</button>`).join('');
+        box.innerHTML = `<div class="em-top"><input type="text" class="em-search" placeholder="Поиск по всем папкам" value="${esc(EM.q)}">${chips}<button class="x" data-em-close title="Закрыть (Esc)">✕</button></div>
+            <div class="em-body"><div class="em-side">${side}</div><div class="em-main"><div class="em-sec">${ql ? 'Найдено' : esc(title)} · ${list.length}</div>
+            <div class="em-grid">${tiles || '<div class="hint">Ничего не найдено</div>'}</div></div></div>
+            <div class="hint em-hint">Клик — в начало промпта (негативные — в негатив) · Shift+клик — туда, где курсор · повторный клик убирает · ★ избранное · ± позитивный/негативный</div>`;
+        if (keepSearch) { const s = box.querySelector('.em-search'); s.focus(); s.setSelectionRange(s.value.length, s.value.length); }
+    }
+    async function emOpen(v) {
+        EM.open = v === undefined ? !EM.open : v;
+        $('#chip-em').classList.toggle('on', EM.open);
+        renderEm();
+        if (EM.open && !EM.data && !EM.loading) {
+            EM.loading = true; renderEm();
+            try { EM.data = await api('embeddings'); } catch (e) { EM.data = null; }
+            EM.loading = false; renderEm();
+        }
+    }
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest) return;
+        if (e.target.closest('#chip-em')) { emOpen(); return; }
+        const box = e.target.closest('#em');
+        if (!box) { if (EM.open && e.isTrusted && !e.target.closest('#prompt, #negative')) emOpen(false); return; }
+        const t = e.target.closest('[data-em-folder], [data-em-filter], [data-em-fav], [data-em-neg], [data-em-close], [data-em]');
+        if (!t) return;
+        if (t.dataset.emClose !== undefined) { emOpen(false); return; }
+        if (t.dataset.emFolder !== undefined) { EM.folder = t.dataset.emFolder; U.emFolder = EM.folder; save(); renderEm(); return; }
+        if (t.dataset.emFilter) { EM.filter = t.dataset.emFilter; renderEm(); return; }
+        const find = (n) => EM.data.items.find((i) => i.name === n);
+        if (t.dataset.emFav) { const it = find(t.dataset.emFav); it.fav = !it.fav; renderEm(); api('embeddings', { op: 'fav', name: it.name, on: it.fav }).then((d) => { EM.data = d; }).catch(() => {}); return; }
+        if (t.dataset.emNeg) { const it = find(t.dataset.emNeg); it.neg = !it.neg; renderEm(); api('embeddings', { op: 'neg', name: it.name, on: it.neg }).then((d) => { EM.data = d; }).catch(() => {}); return; }
+        if (t.dataset.em) emToggle(find(t.dataset.em), e.shiftKey);
+    });
+    document.addEventListener('input', (e) => { if (e.target.matches && e.target.matches('.em-search')) { EM.q = e.target.value; renderEm(); } });
+    ['keyup', 'click', 'select'].forEach((ev) => document.addEventListener(ev, (e) => { if (e.target.id === 'prompt') EM.caret = e.target.selectionStart; }));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && EM.open && $('#lb').hidden) emOpen(false); });
+
     // ---------- пресеты: перетаскивание пилюль (порядок сохраняется на Drive, виден и в классическом) ----------
     let suppressClick = false;
     document.addEventListener('pointerdown', (e) => {

@@ -48,10 +48,12 @@
       </div>
       <div class="strip" id="strip"></div>
       <div class="prompt">
+        <div class="em" id="em" hidden></div>
         <textarea id="prompt" rows="3" placeholder="Что нарисовать? Можно по-русски — кнопка RU→EN или автоперевод"></textarea>
         <div class="neg" id="neg-row" hidden><textarea id="negative" rows="2" placeholder="Чего не должно быть (негативный промпт)"></textarea></div>
         <div class="prow">
           <button class="chip" id="chip-tr" title="Перевести промпт на английский (DeepL / Google)">RU→EN</button>
+          <button class="chip" id="chip-em" title="Эмбеддинги: клик — в промпт, Shift+клик — туда, где курсор">🧬 эмбеддинги</button>
           <button class="chip" id="chip-neg">− негатив</button>
           <button class="chip" id="chip-cam" title="Карточка «Камера» справа"></button>
           <button class="chip" id="chip-strip" title="Показать / спрятать ленту истории — больше места под картинку"></button>

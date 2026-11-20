@@ -64,8 +64,10 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .strip { display: flex; gap: 6px; overflow-x: auto; min-height: 62px; padding-bottom: 2px; }
 .strip img { width: 58px; height: 58px; object-fit: cover; border-radius: 8px; border: 2px solid transparent; cursor: pointer; flex: none; background: var(--line); }
 .strip img.on { border-color: var(--yel); }
+.strip-x { flex: none; width: 26px; height: 58px; border: 1px dashed var(--line2); border-radius: 8px; background: transparent; color: var(--dim); font-size: 14px; }
+.strip-x:hover { color: var(--yel); border-color: var(--yel); }
 
-.prompt { background: var(--panel); border: 1px solid var(--line2); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.prompt { position: relative; background: var(--panel); border: 1px solid var(--line2); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 .prompt textarea { width: 100%; resize: vertical; border: 0; outline: none; background: transparent; line-height: 1.5; }
 .neg textarea { border-top: 1px dashed var(--line2); padding-top: 6px; color: var(--fg2); }
 .prow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
@@ -160,3 +162,38 @@ select, input[type=number], input[type=text] { width: 100%; background: var(--bg
   background: rgba(40,40,40,.55); color: #ebdbb2; font-size: 30px; line-height: 1; cursor: pointer; }
 .lb-nav:hover { background: rgba(40,40,40,.85); color: #fabd2f; }
 .lb-nav.prev { left: 12px; } .lb-nav.next { right: 12px; }
+
+/* ---------- 🧬 эмбеддинги ---------- */
+.em { position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); z-index: 20; max-height: min(560px, 70vh); display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--line2); border-radius: 12px; box-shadow: 0 12px 36px rgba(0,0,0,.35); padding: 10px; }
+.em-top { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.em-top .em-search { flex: 1; min-width: 160px; }
+.em-top .x { margin-left: 4px; font-size: 15px; }
+.em-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 10px; }
+.em-side { overflow-y: auto; border-right: 1px solid var(--line); padding-right: 6px; display: flex; flex-direction: column; gap: 1px; }
+.em-f { display: flex; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--fg2); padding: 4px 8px; border-radius: 7px; text-align: left; font-size: 12px; }
+.em-f span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.em-f i { font-style: normal; font-size: 11px; color: var(--dim2); }
+.em-f:hover, .em-f.on { background: var(--card); }
+.em-f.on { color: var(--acc); }
+.em-main { overflow-y: auto; min-height: 0; }
+.em-sec { font-size: 11.5px; color: var(--dim); margin-bottom: 6px; }
+.em-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 7px; }
+.em-t { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: 9px; overflow: hidden; cursor: pointer; }
+.em-t:hover { border-color: var(--line2); }
+.em-t.used { border: 2px solid var(--acc); }
+.em-t.dim { opacity: .55; }
+.em-img { height: 76px; display: flex; align-items: center; justify-content: center; background: var(--bg); font-size: 22px; }
+.em-img img { width: 100%; height: 100%; object-fit: cover; }
+.em-n { font-size: 11px; padding: 4px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.em-b { position: absolute; left: 4px; font-size: 9.5px; padding: 0 5px; border-radius: 4px; font-weight: 600; color: #fbf1c7; }
+.em-b.neg { top: 4px; background: rgba(204,36,29,.85); }
+.em-b.sd { top: 20px; background: rgba(181,118,20,.9); }
+.em-b.in { bottom: 24px; background: var(--acc); }
+.em-star, .em-flip { position: absolute; top: 3px; width: 20px; height: 20px; border-radius: 6px; border: 0; background: rgba(29,32,33,.6); color: #ebdbb2; font-size: 12px; padding: 0; opacity: 0; }
+.em-star { right: 3px; }
+.em-flip { right: 26px; }
+.em-t:hover .em-star, .em-t:hover .em-flip, .em-star.on { opacity: 1; }
+.em-star.on { color: #fabd2f; }
+.em-hint { margin-top: 8px; }
+@media (max-width: 700px) { .em-body { grid-template-columns: 1fr; } .em-side { flex-direction: row; flex-wrap: wrap; border-right: 0; max-height: 90px; } }

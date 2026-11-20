@@ -43,6 +43,15 @@ STATE = {
 }
 
 
+EMB = {"folder": "/content/drive/MyDrive/FOOOCUS-SUD/models/embeddings", "message": "", "recent": ["skin_detail"],
+       "items": [{"name": n, "folder": f, "neg": neg, "neg_auto": True, "fav": fav, "sdxl": sd, "thumb": None}
+                 for n, f, neg, fav, sd in [
+                     ("skin_detail", "DETAILERS", False, True, True), ("eyes_hd", "DETAILERS", False, False, True),
+                     ("unaestheticXL", "!MAIN-NEGS", True, True, True), ("negativeXL_D", "!MAIN-NEGS", True, False, True),
+                     ("cinematic_v2", "STYLES", False, False, True), ("film_grain", "STYLES", False, False, True),
+                     ("old_sd15_emb", "OTHER", False, False, False), ("random_emb", "", False, False, None)]]}
+
+
 def _svg(seed, w=1024, h=1024):
     r = random.Random(seed)
     c1 = "#%02x%02x%02x" % (r.randint(120, 230), r.randint(60, 160), r.randint(20, 120))
@@ -93,6 +102,8 @@ class H(BaseHTTPRequestHandler):
                 out["images"] = [f"{t['seed'] + i}" for i in range(t["n"])]
                 out["names"] = [time.strftime("%Y-%m-%d_%H-%M-%S") + f"_{(t['seed'] + i) % 10000:04d}.svg" for i in range(t["n"])]
             return self._send(200, out)
+        if p == "/sud/api/embeddings":
+            return self._send(200, EMB)
         if p.startswith("/sud/api/image/"):
             return self._send(200, _svg(int(p.rsplit("/", 1)[-1])), "image/svg+xml")
         return self._send(404, {"error": "нет"})
@@ -116,6 +127,15 @@ class H(BaseHTTPRequestHandler):
             by = {x["name"]: x for x in STATE[key]}
             STATE[key] = [by.pop(n) for n in body["names"] if n in by] + list(by.values())
             return self._send(200, {"ok": True, "presets": STATE[key]})
+        if p == "/sud/api/embeddings":
+            it = next((x for x in EMB["items"] if x["name"] == body.get("name")), None)
+            if it and body.get("op") == "fav":
+                it["fav"] = bool(body.get("on"))
+            if it and body.get("op") == "neg":
+                it["neg"] = bool(body.get("on"))
+            if it and body.get("op") == "used":
+                EMB["recent"] = [it["name"]] + [r for r in EMB["recent"] if r != it["name"]][:9]
+            return self._send(200, EMB)
         if p == "/sud/api/translate":
             return self._send(200, {"text": "[перевод-заглушка] " + body.get("text", ""), "engine": "mock", "warn": ""})
         return self._send(404, {"error": "нет"})
