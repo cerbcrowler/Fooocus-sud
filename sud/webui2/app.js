@@ -134,6 +134,66 @@
     }
     const peTools = (kind) => `<button class="pill tool" data-pe-new="${kind}" title="Сохранить текущие настройки как новый пресет">＋</button><button class="pill tool${EDIT[kind] ? ' on' : ''}" data-pe-mode="${kind}" title="Правка пресетов: переименовать, перезаписать, удалить">✎</button>`;
 
+    // ---------- выбор LoRA с поиском (вместо обычного списка) ----------
+    const loraLabel = (name) => {
+        if (!name || name === 'None') return '<span class="dim">— выбери LoRA —</span>';
+        const parts = String(name).replace(/\.safetensors$/i, '').split(/[\\/]/), file = parts.pop();
+        return (parts.length ? `<small>${esc(parts.join('/'))}/</small>` : '') + esc(file);
+    };
+    const LP = { row: -1, q: '', hi: 0, items: [] };
+    function lpOpen(row) {
+        LP.row = row; LP.q = ''; LP.hi = 0;
+        let el = $('#lpick');
+        if (!el) { el = document.createElement('div'); el.id = 'lpick'; el.className = 'lpick'; document.body.appendChild(el); }
+        el.innerHTML = '<input type="text" class="lp-q" placeholder="Поиск LoRA… (можно несколько слов)" autocomplete="off"><div class="lp-list"></div><div class="lp-foot dim">↑↓ выбрать · Enter · Esc</div>';
+        el.hidden = false;
+        lpPlace(); lpRender();
+        el.querySelector('.lp-q').focus();
+    }
+    function lpPlace() {
+        const el = $('#lpick'), b = document.querySelector(`[data-lora-pick="${LP.row}"]`);
+        if (!el || !b) return;
+        const r = b.getBoundingClientRect(), w = Math.max(r.width, 340), h = Math.min(420, window.innerHeight - 20);
+        el.style.width = w + 'px'; el.style.maxHeight = h + 'px';
+        el.style.left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8)) + 'px';
+        el.style.top = (r.bottom + h + 6 < window.innerHeight ? r.bottom + 4 : Math.max(8, r.top - h - 4)) + 'px';
+    }
+    const lpClose = () => { const el = $('#lpick'); if (el) el.hidden = true; LP.row = -1; };
+    function lpRender() {
+        const el = $('#lpick'); if (!el || LP.row < 0) return;
+        const cur = (U.loras[LP.row] || [])[1], used = new Set(U.loras.map((l) => l[1]));
+        const words = LP.q.toLowerCase().split(/\s+/).filter(Boolean);
+        const list = SRV.loras.filter((n) => words.every((w) => n.toLowerCase().includes(w)));
+        const recent = (U.loraRecent || []).filter((n) => SRV.loras.includes(n));
+        let html = '';
+        LP.items = [];
+        const item = (n) => { LP.items.push(n); const i = LP.items.length - 1;
+            return `<button class="lp-it${n === cur ? ' cur' : ''}${i === LP.hi ? ' hi' : ''}" data-lp-i="${i}">${loraLabel(n)}${used.has(n) && n !== cur ? '<em>уже в списке</em>' : ''}</button>`; };
+        if (!words.length && recent.length) html += '<div class="lp-h">Недавние</div>' + recent.slice(0, 6).map(item).join('') + '<div class="lp-h">Все</div>';
+        html += list.map(item).join('') || '<div class="hint" style="padding:8px">Ничего не нашлось</div>';
+        if (cur && cur !== 'None' && !words.length) { LP.items.push('None'); html += `<button class="lp-it lp-none${LP.items.length - 1 === LP.hi ? ' hi' : ''}" data-lp-i="${LP.items.length - 1}">✕ убрать из слота</button>`; }
+        el.querySelector('.lp-list').innerHTML = html;
+        const h = el.querySelector('.lp-it.hi'); if (h) h.scrollIntoView({ block: 'nearest' });
+    }
+    function lpPick(n) {
+        const row = LP.row; lpClose();
+        if (row < 0 || !U.loras[row]) return;
+        U.loras[row][1] = n;
+        if (n !== 'None') { U.loras[row][0] = true; U.loraRecent = [n].concat((U.loraRecent || []).filter((x) => x !== n)).slice(0, 12); }
+        save(); renderRight();
+    }
+    document.addEventListener('input', (e) => { if (e.target.classList && e.target.classList.contains('lp-q')) { LP.q = e.target.value; LP.hi = 0; lpRender(); } });
+    document.addEventListener('keydown', (e) => {
+        if (!e.target.classList || !e.target.classList.contains('lp-q')) return;
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); LP.hi = Math.max(0, Math.min(LP.items.length - 1, LP.hi + (e.key === 'ArrowDown' ? 1 : -1))); lpRender(); }
+        else if (e.key === 'Enter') { e.preventDefault(); if (LP.items[LP.hi]) lpPick(LP.items[LP.hi]); }
+        else if (e.key === 'Escape') { e.preventDefault(); lpClose(); }
+    });
+    document.addEventListener('pointerdown', (e) => { const el = $('#lpick'); if (el && !el.hidden && !el.contains(e.target) && !e.target.closest('[data-lora-pick]')) lpClose(); });
+    document.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('[data-lp-i]'); if (b) lpPick(LP.items[+b.dataset.lpI]); });
+    window.addEventListener('resize', () => { if (LP.row >= 0) lpPlace(); });
+    document.addEventListener('scroll', (e) => { if (LP.row >= 0 && !(e.target.closest && e.target.closest('#lpick'))) lpPlace(); }, true);
+
     function renderRight() {
         if (!SRV) return;
         const S = SRV;
@@ -153,7 +213,7 @@
         // LoRA
         const lp = S.lora_presets.map((p) => `<button class="pill${PE.kind === 'loras' && PE.name === p.name ? ' edit' : ''}" data-lp="${esc(p.name)}" title="${esc((p.note ? p.note + '\n' : '') + (p.loras || []).map((l) => short(l.name) + ' ×' + l.weight).join(', '))}">${esc(p.name)}${p.name === startLora ? '<span class="star">★</span>' : ''}</button>`).join('');
         const rows = U.loras.map(([on, name, w], i) => `<div class="lora" data-row="${i}"><span class="grip" title="Потяни, чтобы поменять порядок">⋮⋮</span><input type="checkbox" data-lora-on="${i}"${on ? ' checked' : ''}>
-            <select data-lora-name="${i}"><option value="None">—</option>${opts(S.loras, name, (x) => x.replace(/\.safetensors$/i, ''))}</select>
+            <button class="lsel${name && name !== 'None' ? '' : ' empty'}" data-lora-pick="${i}" title="${esc(name)}">${loraLabel(name)}</button>
             <button class="x" data-lora-del="${i}" title="Убрать">✕</button>
             <div class="w"><input type="range" data-lora-w="${i}" min="${S.lora_min}" max="${S.lora_max}" step="0.1" value="${w}"><output>${(+w).toFixed(1)}</output></div></div>`).join('');
         html += card('loras', '<b>LoRA</b>', `${U.loras.filter((l) => l[0]).length} из ${S.lora_slots}`,
@@ -375,7 +435,8 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
         }
         if (t.dataset.ar) { U.aspect = t.dataset.ar; save(); renderRight(); return; }
         if (t.dataset.loraDel !== undefined) { U.loras.splice(+t.dataset.loraDel, 1); save(); renderRight(); return; }
-        if (t.dataset.act === 'lora-add') { U.loras.push([true, 'None', 1]); save(); renderRight(); return; }
+        if (t.dataset.act === 'lora-add') { U.loras.push([true, 'None', 1]); save(); renderRight(); lpOpen(U.loras.length - 1); return; }
+        if (t.dataset.loraPick !== undefined) { lpOpen(+t.dataset.loraPick); return; }
         if (t.dataset.camAngle !== undefined) { U.camera.angle = U.camera.angle === t.dataset.camAngle ? '' : t.dataset.camAngle; U.camera.enabled = !!(U.camera.angle || U.camera.height || U.camera.shot); save(); renderRight(); return; }
         if (t.dataset.action && current && !running) {
             const a = t.dataset.action, keepSeed = a.startsWith('upscale') || a === 'faces';
