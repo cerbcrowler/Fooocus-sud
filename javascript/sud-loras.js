@@ -2,7 +2,7 @@
 // - пустые слоты LoRA (None) скрыты, «＋ Добавить LoRA» открывает следующий
 // - имя лоры текстом: имя крупно, ниже папка мелко (без .safetensors)
 // - счётчик «N из M», кнопки заголовков: 🔄 обновить файлы, Refiner, выключить все лоры
-// - заливка тонких ползунков (--p) по значению
+// - заливка тонких ползунков (--p) по значению; колёсико мыши крутит любой ползунок (в конце файла)
 // Сами элементы — родные компоненты Fooocus (lora_ctrls и т.д.), поэтому пресеты,
 // загрузка параметров из картинок и генерация работают как раньше.
 (function () {
@@ -239,4 +239,44 @@
     });
 
     setInterval(tick, 400);
+})();
+
+// ================= колёсико мыши на ползунках (все ползунки интерфейса) =================
+// Fooocus-sud: ползунки крутятся колёсиком мыши при наведении.
+// Шаг — шаг самого ползунка; Shift — ×10, Ctrl/Alt — точно (÷10, если шаг позволяет дробь не хуже 0.001).
+// Чтобы не «ловить» ползунки при обычной прокрутке страницы: колесо срабатывает, только если курсор
+// уже ~250 мс стоит над ползунком (или колесо уже крутили над ним только что).
+(function () {
+    const HOLD_MS = 250;
+    let hoverEl = null, hoverSince = 0, lastWheel = 0;
+
+    document.addEventListener('pointerover', (e) => {
+        const r = e.target.closest && e.target.closest('input[type=range]');
+        if (r !== hoverEl) { hoverEl = r; hoverSince = performance.now(); }
+    });
+
+    const decimals = (x) => { const s = String(x); return s.includes('.') ? s.split('.')[1].length : 0; };
+
+    document.addEventListener('wheel', (e) => {
+        const r = e.target.closest && e.target.closest('input[type=range]');
+        if (!r || r.disabled) return;
+        const now = performance.now();
+        if (r !== hoverEl || (now - hoverSince < HOLD_MS && now - lastWheel > 400)) return;
+        e.preventDefault();
+        lastWheel = now;
+
+        let step = parseFloat(r.step);
+        if (!step || step <= 0) step = 1;
+        if (e.shiftKey) step *= 10;
+        else if ((e.ctrlKey || e.altKey) && step / 10 >= 0.001) step /= 10;
+        const min = parseFloat(r.min || '0'), max = parseFloat(r.max || '100');
+        const dir = (e.deltaY || e.deltaX) < 0 ? 1 : -1;
+        const prec = Math.max(decimals(r.step || 1), decimals(step));
+        let v = Math.round((parseFloat(r.value) + dir * step) * 10 ** prec) / 10 ** prec;
+        v = Math.min(max, Math.max(min, v));
+        if (String(v) === r.value) return;
+        r.value = String(v);
+        r.dispatchEvent(new Event('input', { bubbles: true }));
+        r.dispatchEvent(new Event('change', { bubbles: true }));
+    }, { passive: false });
 })();
