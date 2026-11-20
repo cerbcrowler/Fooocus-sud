@@ -239,3 +239,112 @@
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); p.finishEdit(t, true); }
     });
 })();
+
+// ================= запоминание интерфейса между перезагрузками (Fooocus-sud) =================
+// Промпты, сэмплинг, разрешение, кол-во картинок, формат, seed, Performance и модель хранятся в браузере
+// (localStorage «sud-ui-state») и возвращаются после F5 / новой сессии Colab. LoRA сюда не входят —
+// их ставит пресет со ★. Сброс — кнопка в ⚙️ Настройках рядом с «▶ Прослушать».
+(function () {
+    const KEY = 'sud-ui-state';
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const ls = {
+        get() { try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { return null; } },
+        set(v) { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch (e) { /* ignore */ } },
+        clear() { try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ } },
+    };
+    const byLabel = (text) => [...document.querySelectorAll('label, span')].find((l) => l.textContent.trim() === text);
+    function block(text, sel) {
+        let b = byLabel(text);
+        for (let i = 0; i < 7 && b && !b.querySelector(sel); i++) b = b.parentElement;
+        return b ? b.querySelector(sel) : null;
+    }
+    const fields = {
+        prompt: { get: () => document.querySelector('#positive_prompt textarea'), kind: 'text' },
+        negative: { get: () => document.querySelector('#negative_prompt textarea'), kind: 'text' },
+        performance: { get: () => block('Performance', 'input[type=radio]')?.closest('fieldset, .wrap, div'), kind: 'radio' },
+        aspect: { get: () => document.querySelector('.aspect_ratios'), kind: 'radio' },
+        sampler: { get: () => document.querySelector('#sud-sampler input'), kind: 'dropdown', id: 'sud-sampler' },
+        scheduler: { get: () => document.querySelector('#sud-scheduler input'), kind: 'dropdown', id: 'sud-scheduler' },
+        steps: { get: () => document.querySelector('#sud-steps input[type=range]'), kind: 'range' },
+        cfg: { get: () => document.querySelector('#sud-cfg input[type=range]'), kind: 'range' },
+        sharpness: { get: () => document.querySelector('#sud-sharpness input[type=range]'), kind: 'range' },
+        image_number: { get: () => block('Image Number', 'input[type=range]'), kind: 'range' },
+        output_format: { get: () => block('Output Format', 'input[type=radio]')?.closest('fieldset, .wrap, div'), kind: 'radio' },
+        seed_random: { get: () => block('Random', 'input[type=checkbox]'), kind: 'check' },
+        seed: { get: () => block('Seed', 'textarea, input[type=text]'), kind: 'text' },
+        model: { get: () => document.querySelector('.sud-model-select input'), kind: 'dropdown', sel: '.sud-model-select' },
+    };
+    function read(f) {
+        const el = f.get();
+        if (!el) return undefined;
+        if (f.kind === 'radio') return el.querySelector('input[type=radio]:checked')?.value;
+        if (f.kind === 'check') return el.checked;
+        return el.value;
+    }
+    async function pick(f, val) {
+        const root = f.id ? document.getElementById(f.id) : document.querySelector(f.sel);
+        const inp = f.get();
+        for (let k = 0; k < 3 && inp; k++) {
+            inp.focus(); inp.click(); await wait(150);
+            inp.value = val; inp.dispatchEvent(new Event('input', { bubbles: true })); await wait(250);
+            const li = [...root.querySelectorAll('li')].find((l) => l.dataset.value === val);
+            if (!li) { inp.blur(); return false; }            // такой модели/сэмплера больше нет
+            li.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); await wait(200);
+            inp.blur(); await wait(200);
+            if (inp.value === val) return true;
+        }
+        return false;
+    }
+    async function write(f, val) {
+        const el = f.get();
+        if (!el || val === undefined || val === null) return;
+        if (read(f) === val) return;
+        if (f.kind === 'text') { el.value = val; el.dispatchEvent(new Event('input', { bubbles: true })); }
+        else if (f.kind === 'range') {
+            el.value = String(val);
+            el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true }));
+        } else if (f.kind === 'check') { el.click(); }
+        else if (f.kind === 'radio') { [...el.querySelectorAll('input[type=radio]')].find((r) => r.value === val)?.click(); }
+        else if (f.kind === 'dropdown') { await pick(f, val); }
+        await wait(120);
+    }
+    const snapshot = () => Object.fromEntries(Object.entries(fields).map(([k, f]) => [k, read(f)]).filter(([, v]) => v !== undefined));
+
+    let restored = false, last = '';
+    async function restore() {
+        const saved = ls.get();
+        if (saved) {
+            // порядок важен: Performance и модель раньше сэмплинга; Random раньше Seed (поле видно только без Random)
+            for (const k of ['performance', 'model', 'aspect', 'image_number', 'output_format', 'seed_random', 'seed',
+                             'sampler', 'scheduler', 'steps', 'cfg', 'sharpness', 'prompt', 'negative']) {
+                try { await write(fields[k], saved[k]); } catch (e) { /* поле не нашлось — пропускаем */ }
+            }
+            console.log('[Fooocus-sud] интерфейс восстановлен из браузера');
+        }
+        restored = true;
+        last = JSON.stringify(snapshot());
+    }
+    // ждём, пока gradio нарисует поля (и наши карточки), потом восстанавливаем и начинаем запоминать
+    const boot = setInterval(() => {
+        if (!document.querySelector('#positive_prompt textarea') || !document.querySelector('#sud-sampler input') || !document.querySelector('.aspect_ratios')) return;
+        clearInterval(boot);
+        setTimeout(restore, 1500);
+    }, 300);
+    setInterval(() => {
+        if (!restored) return;
+        const s = JSON.stringify(snapshot());
+        if (s !== last) { last = s; ls.set(JSON.parse(s)); }
+    }, 1500);
+
+    // кнопка сброса в ⚙️ Настройках (рядом с «▶ Прослушать»)
+    setInterval(() => {
+        const t = document.querySelector('.sud-notify-test');
+        if (!t || document.querySelector('.sud-ui-forget')) return;
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'sud-ui-forget sud-sp-btn'; b.style.marginLeft = '8px';
+        b.textContent = '↺ Забыть запомненный промпт и настройки';
+        b.title = 'Промпт, сэмплинг, разрешение и т.д. перестанут возвращаться после F5 (до следующего изменения)';
+        b.addEventListener('click', () => { restored = false; ls.clear(); b.textContent = '✓ Забыто — обнови страницу'; });
+        t.after(b);
+    }, 1500);
+})();
