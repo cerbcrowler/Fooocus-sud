@@ -10,6 +10,7 @@
     POST /sud/api/translate       {text} → перевод RU→EN (как кнопка RU→EN)
     POST /sud/api/presets/order   {kind: sampling|loras, names: [...]} → новый порядок пресетов (Drive)
     POST /sud/api/presets         {kind, op: add|update|edit|delete, name, new?, note?, values?} → пресеты (Drive)
+    POST /sud/api/upload          картинка (тело запроса) или {"from": key} → {"key"} для «Образцов» (Image Prompt)
     GET  /sud/api/embeddings      эмбеддинги (папки, превью, избранное…), POST {op: fav|neg|used} — изменить
 
 Генерация идёт через ту же очередь, что кнопка Generate (modules.async_worker.async_tasks).
@@ -38,6 +39,8 @@ _images = {}            # key → путь к файлу
 _clean = {}             # key → путь к чистой копии (если на картинке плашка)
 _lock = threading.Lock()
 _durations = []         # секунд на картинку — для оценки времени
+UPLOADS = "/content/sud_uploads" if os.path.isdir("/content") else os.path.join(
+    __import__("tempfile").gettempdir(), "sud_uploads")   # образцы: переживают перезапуск Fooocus
 
 
 # ---------------- сборка аргументов AsyncTask ----------------
@@ -70,7 +73,10 @@ def _build_args(p):
     put("composition", json.dumps(p["composition"]) if isinstance(p.get("composition"), dict) else p.get("composition"))
     put("camera", json.dumps(p["camera"]) if isinstance(p.get("camera"), dict) else p.get("camera"))
     put("styles", p.get("styles"))
-    _apply_action(p.get("action"), put)
+    if p.get("action"):
+        _apply_action(p.get("action"), put)
+    else:
+        _apply_ip(p.get("ip"), put)
 
     seed = p.get("seed")
     try:
@@ -108,10 +114,63 @@ ACTIONS = {
 def _load_image(key):
     import numpy as np
     from PIL import Image
-    path = _clean.get(key) or _images.get(key)
+    path = _clean.get(key) or _images.get(key) or _upload_path(key)
     if not path or not os.path.isfile(path):
         raise ValueError("картинки уже нет (Fooocus перезапускался?) — сгенерируй заново")
     return np.array(Image.open(path).convert("RGB"))
+
+
+def _upload_path(key):
+    key = str(key or "")
+    if len(key) == 17 and key[0] == "u" and all(c in "0123456789abcdef" for c in key[1:]):
+        return os.path.join(UPLOADS, key + ".png")
+    return None
+
+
+def _save_upload(img):
+    """PIL/массив → PNG в UPLOADS, ключ = хэш содержимого (одно фото — один файл)."""
+    import hashlib
+    import numpy as np
+    from PIL import Image
+    im = img if isinstance(img, Image.Image) else Image.fromarray(np.asarray(img))
+    im = im.convert("RGB")
+    if max(im.size) > 3072:
+        im.thumbnail((3072, 3072))
+    buf = io.BytesIO()
+    im.save(buf, "PNG")
+    data = buf.getvalue()
+    key = "u" + hashlib.sha1(data).hexdigest()[:16]
+    os.makedirs(UPLOADS, exist_ok=True)
+    path = _upload_path(key)
+    if not os.path.isfile(path):
+        with open(path, "wb") as f:
+            f.write(data)
+    return key, im.size
+
+
+def _apply_ip(slots, put):
+    """«Образцы» → Image Prompt: вкладка ip + 4 слота (картинка, стоп, вес, тип)."""
+    import modules.flags as F
+    ctrls = _named.get("ip_ctrls") or []
+    slots = [s for s in (slots or []) if isinstance(s, dict) and s.get("key")]
+    if not slots or not ctrls:
+        return
+    put("input_image", True)
+    put("current_tab", "ip")
+    for i in range(len(ctrls) // 4):
+        img = stop = weight = None
+        typ = F.default_ip
+        if i < len(slots):
+            s = slots[i]
+            typ = s.get("type") if s.get("type") in F.ip_list else F.default_ip
+            d_stop, d_weight = F.default_parameters[typ]
+            img = _load_image(s["key"])
+            stop = min(1.0, max(0.0, float(s.get("stop", d_stop))))
+            weight = min(2.0, max(0.0, float(s.get("weight", d_weight))))
+        else:
+            stop, weight = F.default_parameters[F.default_ip]
+        for c, v in zip(ctrls[i * 4:i * 4 + 4], (img, stop, weight, typ)):
+            _overrides[id(c)] = v
 
 
 def _apply_action(action, put):
@@ -274,6 +333,8 @@ def _state():
             "image_number": _default(n["image_number"]) if "image_number" in n else 1,
             "negative": _default(n["negative_prompt"]) if "negative_prompt" in n else "",
         },
+        "ip": {"types": F.ip_list, "defaults": {k: list(v) for k, v in F.default_parameters.items()},
+               "slots": len(_named.get("ip_ctrls") or []) // 4},
         "sampling_presets": P.SAMPLING.load(),
         "lora_presets": P.LORAS.load(),
         "queue": len(worker.async_tasks),
@@ -346,8 +407,20 @@ def _routes(app):
             mm.interrupt_current_processing()
         return JSONResponse({"ok": True})
 
+    async def upload(request: Request):
+        ctype = request.headers.get("content-type", "")
+        try:
+            if ctype.startswith("application/json"):
+                key, size = _save_upload(_load_image((await request.json()).get("from")))
+            else:
+                from PIL import Image
+                key, size = _save_upload(Image.open(io.BytesIO(await request.body())))
+        except Exception as e:
+            return JSONResponse({"error": f"не получилось взять картинку: {e}"}, status_code=400)
+        return JSONResponse({"key": key, "w": size[0], "h": size[1]})
+
     async def image(key: str):
-        path = _images.get(key)
+        path = _images.get(key) or _upload_path(key)
         if not path or not os.path.isfile(path):
             return Response(status_code=404)
         return FileResponse(path, headers={"Cache-Control": "max-age=86400"})
@@ -422,6 +495,7 @@ def _routes(app):
     app.add_api_route("/sud/api/task/{tid}", task, methods=["GET"])
     app.add_api_route("/sud/api/task/{tid}/stop", stop, methods=["POST"])
     app.add_api_route("/sud/api/image/{key}", image, methods=["GET"])
+    app.add_api_route("/sud/api/upload", upload, methods=["POST"])
     app.add_api_route("/sud/api/translate", translate, methods=["POST"])
     app.add_api_route("/sud/api/presets/order", presets_order, methods=["POST"])
     app.add_api_route("/sud/api/presets", presets_edit, methods=["POST"])

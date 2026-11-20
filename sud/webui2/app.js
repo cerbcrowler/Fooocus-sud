@@ -25,6 +25,7 @@
         prompt: '', negative: '', showNeg: false, model: null, loras: null, sampler: null, scheduler: null,
         steps: -1, cfg: 1, sharpness: 2, aspect: null, image_number: 1, output_format: 'png', performance: null,
         random: true, seed: '', closed: {}, camera: { enabled: false, angle: '', height: '', shot: '', weight: 1.2 },
+        ip: [], ipOff: false, ipOpen: false,
     }, lsGet(LS, {}));
     let history = lsGet(LS_HIST, []);                 // [{key, url, seed, prompt}]
     let current = null, running = null;
@@ -253,6 +254,7 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
             sampler: U.sampler, scheduler: U.scheduler, steps: +U.steps, cfg: +U.cfg, sharpness: +U.sharpness,
             aspect: U.aspect, image_number: +U.image_number, output_format: U.output_format, performance: U.performance,
             seed: U.random ? null : U.seed, camera: U.camera,
+            ip: ipActive() ? U.ip.filter((s) => s && s.key) : [],
         }, extra || {});
         $('#btn-gen').disabled = true;
         try {
@@ -363,11 +365,8 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
             catch (er) { alert('Перевод не удался: ' + er.message); }
             t.classList.remove('busy'); return;
         }
-        if (t.id === 'btn-theme') {
-            const now = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
-            document.documentElement.dataset.theme = now; try { localStorage.setItem('sud-theme', now); } catch (er) { /* */ }
-            t.innerHTML = svg(now === 'light' ? 'moon' : 'sun');
-        }
+        if (t.id === 'btn-theme') { const m = $('#tmenu'); m.hidden = !m.hidden; if (!m.hidden) renderThemes(); return; }
+        if (t.dataset.theme) { setTheme(t.dataset.theme); $('#tmenu').hidden = true; return; }
     });
     document.addEventListener('input', (e) => {
         const t = e.target;
@@ -411,6 +410,128 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
     document.addEventListener('keydown', (e) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); generate(); }
     });
+    // ---------- темы: Gruvbox тёмная / светлая, «Бумага» (светлая в духе Claude) ----------
+    const THEMES = [['dark', 'Gruvbox тёмная', ['#282828', '#ebdbb2', '#83a598']], ['light', 'Gruvbox светлая', ['#fbf1c7', '#3c3836', '#076678']],
+        ['paper', 'Бумага', ['#faf9f5', '#1f1e1d', '#d97757']]];
+    const themeNow = () => document.documentElement.dataset.theme || 'dark';
+    function renderThemes() {
+        $('#tmenu').innerHTML = THEMES.map(([k, t, c]) => `<button data-theme="${k}" class="${themeNow() === k ? 'on' : ''}"><span class="sw">${c.map((x) => `<i style="background:${x}"></i>`).join('')}</span>${t}</button>`).join('');
+    }
+    function setTheme(k) {
+        document.documentElement.dataset.theme = k;
+        try { localStorage.setItem('sud2-theme', k); localStorage.setItem('sud-theme', k === 'dark' ? 'dark' : 'light'); } catch (e) { /* классическому — светлая/тёмная */ }
+        $('#btn-theme').innerHTML = svg(k === 'dark' ? 'moon' : 'sun');
+    }
+    document.addEventListener('pointerdown', (e) => { if (!e.target.closest('.themes')) $('#tmenu').hidden = true; });
+
+    // ---------- 🖼 образцы (Image Prompt): до 4 фото — похоже / лицо / поза / контур / глубина ----------
+    const IP_T = [['ImagePrompt', 'Похоже', 'Общий вид, стиль, цвета'], ['FaceSwap', 'Лицо', 'Перенести лицо'], ['OpenPose', 'Поза', 'Повторить позу (DWPose)'],
+        ['PyraCanny', 'Контур', 'Повторить контуры / композицию'], ['CPDS', 'Глубина', 'Повторить объём и расположение']];
+    const ipSlots = () => (SRV && SRV.ip ? SRV.ip.slots : 4) || 4;
+    const ipCount = () => U.ip.filter((s) => s && s.key).length;
+    const ipActive = () => !U.ipOff && ipCount() > 0;
+    const ipDef = (type) => ((SRV && SRV.ip && SRV.ip.defaults[type]) || [0.5, 0.6]);   // [стоп, вес]
+    function renderIp() {
+        const c = $('#chip-ip'), n = ipCount();
+        c.textContent = '🖼 образцы' + (n ? ` · ${n}${U.ipOff ? ' (выкл)' : ''}` : '');
+        c.classList.toggle('on', ipActive());
+        c.classList.toggle('open', !!U.ipOpen);
+        const box = $('#ip');
+        box.hidden = !U.ipOpen;
+        if (!U.ipOpen) return;
+        const slots = [];
+        for (let i = 0; i < ipSlots(); i++) {
+            const s = U.ip[i];
+            if (!s || !s.key) {
+                slots.push(`<div class="ips empty" data-ip-drop="${i}"><button class="ip-add" data-ip-pick="${i}" title="Выбрать файл"><b>＋</b>перетащи фото,<br>Ctrl+V или клик</button></div>`);
+                continue;
+            }
+            const types = IP_T.map(([k, t, h]) => `<button class="pill${s.type === k ? ' on' : ''}" data-ip-type="${i}" data-v="${k}" title="${h}">${t}</button>`).join('');
+            slots.push(`<div class="ips" data-ip-drop="${i}">
+                <div class="ip-th"><img src="${API}image/${s.key}" alt="" draggable="false" data-ip-img="${i}"><button class="x" data-ip-del="${i}" title="Убрать">✕</button></div>
+                <div class="pills ip-types">${types}</div>
+                <div class="row"><label>Сила</label><input type="range" data-ip-w="${i}" min="0" max="2" step="0.05" value="${s.weight}"><output>${(+s.weight).toFixed(2)}</output></div>
+                <div class="row"><label title="До какой доли шагов действует образец">До</label><input type="range" data-ip-s="${i}" min="0" max="1" step="0.05" value="${s.stop}"><output>${Math.round(s.stop * 100)}%</output></div></div>`);
+        }
+        box.innerHTML = `<div class="ip-top"><b>Образцы</b><span class="dim">${n} из ${ipSlots()}</span>
+            <label class="ip-on"><input type="checkbox" data-ip-on${U.ipOff ? '' : ' checked'}> использовать</label><span class="sp"></span>
+            ${n ? '<button class="btn-s" data-ip-clear title="Убрать все образцы">очистить</button>' : ''}<button class="x" data-ip-close title="Свернуть">▾</button></div>
+            <div class="ip-slots">${slots.join('')}</div>
+            <input type="file" id="ip-file" accept="image/*" hidden>`;
+        box.querySelectorAll('img[data-ip-img]').forEach((im) => { im.onerror = () => im.closest('.ip-th').classList.add('lost'); });
+    }
+    function ipPut(i, key) {
+        if (i == null || i < 0) { i = U.ip.findIndex((s) => !s || !s.key); if (i < 0) i = Math.min(U.ip.length, ipSlots()) - 1; if (i < 0) i = 0; }
+        const old = U.ip[i], type = old && old.key ? old.type : 'ImagePrompt', [stop, weight] = old && old.key ? [old.stop, old.weight] : ipDef(type);
+        while (U.ip.length < i) U.ip.push(null);
+        U.ip[i] = { key, type, stop, weight };
+        U.ipOpen = true; U.ipOff = false; save(); renderIp();
+    }
+    async function ipUpload(i, src) {   // src: File/Blob или {from: key}
+        try {
+            let r;
+            if (src instanceof Blob) {
+                const res = await fetch(API + 'upload', { method: 'POST', headers: { 'Content-Type': src.type || 'application/octet-stream' }, body: src });
+                r = await res.json(); if (!res.ok) throw new Error(r.error || res.status);
+            } else r = await api('upload', src);
+            ipPut(i, r.key);
+        } catch (e) { alert('Не получилось взять картинку: ' + e.message); }
+    }
+    const keyFromUrl = (u) => { const m = String(u || '').match(/\/image\/([0-9a-fu]+)/); return m ? m[1] : null; };
+    document.addEventListener('click', (e) => {
+        const t = e.target.closest('button, input[type=checkbox]');
+        if (!t) return;
+        if (t.id === 'chip-ip') { U.ipOpen = !U.ipOpen; save(); renderIp(); return; }
+        if (t.dataset.ipClose !== undefined) { U.ipOpen = false; save(); renderIp(); return; }
+        if (t.dataset.ipClear !== undefined) { U.ip = []; save(); renderIp(); return; }
+        if (t.dataset.ipOn !== undefined) { U.ipOff = !t.checked; save(); renderIp(); return; }
+        if (t.dataset.ipDel !== undefined) { U.ip[+t.dataset.ipDel] = null; while (U.ip.length && !U.ip[U.ip.length - 1]) U.ip.pop(); save(); renderIp(); return; }
+        if (t.dataset.ipType !== undefined) {
+            const s = U.ip[+t.dataset.ipType]; s.type = t.dataset.v; [s.stop, s.weight] = ipDef(s.type); save(); renderIp(); return;
+        }
+        if (t.dataset.ipPick !== undefined) {
+            const f = $('#ip-file'), i = +t.dataset.ipPick;
+            f.onchange = () => { if (f.files[0]) ipUpload(i, f.files[0]); };
+            f.click(); return;
+        }
+        if (t.dataset.act === 'to-ip' && current) { ipUpload(null, { from: current.key }); }
+    });
+    document.addEventListener('input', (e) => {
+        const t = e.target;
+        if (t.dataset.ipW !== undefined) { U.ip[+t.dataset.ipW].weight = +t.value; t.nextElementSibling.textContent = (+t.value).toFixed(2); save(); }
+        if (t.dataset.ipS !== undefined) { U.ip[+t.dataset.ipS].stop = +t.value; t.nextElementSibling.textContent = Math.round(t.value * 100) + '%'; save(); }
+    });
+    // перетаскивание: файлы с компьютера, картинки из ленты/просмотра/галереи
+    document.addEventListener('dragstart', (e) => {
+        const im = e.target.closest && e.target.closest('img[data-h]');
+        if (im) { e.dataTransfer.setData('text/sud-key', history[+im.dataset.h].key); e.dataTransfer.effectAllowed = 'copy'; }
+        else if (e.target.id === 'viewer-img' && current) e.dataTransfer.setData('text/sud-key', current.key);
+    });
+    const dropSlot = (e) => e.target.closest && e.target.closest('[data-ip-drop], #ip, .prompt');
+    document.addEventListener('dragover', (e) => {
+        const z = dropSlot(e); if (!z) return;
+        e.preventDefault(); e.dataTransfer.dropEffect = 'copy';
+        document.querySelectorAll('.ips.over').forEach((x) => x.classList.remove('over'));
+        const s = e.target.closest('[data-ip-drop]'); if (s) s.classList.add('over');
+        if (!U.ipOpen && [...e.dataTransfer.types].some((x) => x === 'Files' || x === 'text/sud-key')) { U.ipOpen = true; renderIp(); }
+    });
+    document.addEventListener('dragleave', (e) => { const s = e.target.closest && e.target.closest('.ips'); if (s && !s.contains(e.relatedTarget)) s.classList.remove('over'); });
+    document.addEventListener('drop', (e) => {
+        const z = dropSlot(e); if (!z) return;
+        e.preventDefault();
+        document.querySelectorAll('.ips.over').forEach((x) => x.classList.remove('over'));
+        const s = e.target.closest('[data-ip-drop]'), i = s ? +s.dataset.ipDrop : null;
+        const f = [...e.dataTransfer.files].find((x) => x.type.startsWith('image/'));
+        if (f) { ipUpload(i, f); return; }
+        const k = e.dataTransfer.getData('text/sud-key') || keyFromUrl(e.dataTransfer.getData('text/uri-list'));
+        if (k) ipUpload(i, { from: k });
+    });
+    document.addEventListener('paste', (e) => {
+        const f = [...(e.clipboardData || {}).files || []].find((x) => x.type.startsWith('image/'));
+        if (!f) return;   // обычный текст — как всегда
+        e.preventDefault(); ipUpload(null, f);
+    });
+
     // ---------- 🧬 эмбеддинги (данные — /sud/api/embeddings = sud/ui_embeddings.py) ----------
     const EM = { data: null, open: false, filter: 'all', q: '', folder: U.emFolder || 'all', caret: null, loading: false };
     const reEsc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -691,7 +812,8 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
     async function boot() {
         document.querySelectorAll('.nv').forEach((b) => { b.innerHTML = svg(b.dataset.icon || b.dataset.view); });
         if (U.rightW) setRW(U.rightW);
-        $('#btn-theme').innerHTML = svg(document.documentElement.dataset.theme === 'light' ? 'moon' : 'sun');
+        $('#btn-theme').innerHTML = svg(themeNow() === 'dark' ? 'moon' : 'sun');
+        renderIp();
         $('#prompt').value = U.prompt; $('#negative').value = U.negative;
         $('#neg-row').hidden = !U.showNeg; $('#chip-neg').classList.toggle('on', U.showNeg);
         renderStrip();
@@ -711,7 +833,7 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
             U.loras = p ? p.loras.map((l) => [l.enabled !== false, l.name, l.weight]) : D.loras;
             if (U.steps === -1 && D.steps) Object.assign(U, { steps: D.steps, cfg: D.cfg, sharpness: D.sharpness });
         }
-        save(); renderRight();
+        save(); renderRight(); renderIp();
         setInterval(refreshState, 15000);
     }
     boot();

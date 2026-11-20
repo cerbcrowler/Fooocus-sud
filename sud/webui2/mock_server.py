@@ -27,6 +27,8 @@ STATE = {
                  "loras": [[True, "TECH/TECH-dmd2_sdxl_4step_lora_fp16.safetensors", 1.0]],
                  "sampler": "lcm", "scheduler": "sgm_uniform", "steps": 6, "cfg": 1.0, "sharpness": 5.0,
                  "aspect": "1024×1024", "performance": "Speed", "output_format": "png", "image_number": 1, "negative": ""},
+    "ip": {"types": ["ImagePrompt", "PyraCanny", "CPDS", "OpenPose", "FaceSwap"], "slots": 4,
+           "defaults": {"ImagePrompt": [0.5, 0.6], "FaceSwap": [0.9, 0.75], "PyraCanny": [0.5, 1.0], "CPDS": [0.5, 1.0], "OpenPose": [0.8, 0.9]}},
     "sampling_presets": [
         {"name": "LCM/SGM_6", "sampler": "lcm", "scheduler": "sgm_uniform", "cfg": 1.0, "steps": 6, "sharpness": 5.0, "note": "как старый DMD2, но быстрее"},
         {"name": "TCD/TCD_6", "sampler": "tcd", "scheduler": "tcd", "cfg": 1.0, "steps": 6, "sharpness": 5.0, "note": "максимум текстуры"},
@@ -105,17 +107,21 @@ class H(BaseHTTPRequestHandler):
         if p == "/sud/api/embeddings":
             return self._send(200, EMB)
         if p.startswith("/sud/api/image/"):
-            return self._send(200, _svg(int(p.rsplit("/", 1)[-1])), "image/svg+xml")
+            return self._send(200, _svg(int(k) if (k := p.rsplit("/", 1)[-1]).isdigit() else int(k[1:9], 16)), "image/svg+xml")
         return self._send(404, {"error": "нет"})
 
     def do_POST(self):
         p = self.path.split("?")[0]
-        body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0)) or 0) or b"{}")
+        raw = self.rfile.read(int(self.headers.get("Content-Length", 0)) or 0)
+        try:
+            body = json.loads(raw or b"{}")
+        except ValueError:
+            body = {}   # картинка в /upload
         if p == "/sud/api/generate":
             seed = int(body["seed"]) if str(body.get("seed") or "").isdigit() else random.randint(0, 10**9)
             tid = uuid.uuid4().hex
             TASKS[tid] = {"id": tid, "seed": seed, "n": int(body.get("image_number", 1)), "start": time.time()}
-            print("generate:", {k: body[k] for k in ("prompt", "sampler", "scheduler", "steps", "cfg", "aspect", "loras", "camera") if k in body})
+            print("generate:", {k: body[k] for k in ("prompt", "sampler", "scheduler", "steps", "cfg", "aspect", "loras", "camera", "ip") if k in body})
             return self._send(200, {"id": tid, "seed": seed, "eta": 7.4})
         if p.endswith("/stop"):
             t = TASKS.get(p.split("/")[-2])
@@ -127,6 +133,10 @@ class H(BaseHTTPRequestHandler):
             by = {x["name"]: x for x in STATE[key]}
             STATE[key] = [by.pop(n) for n in body["names"] if n in by] + list(by.values())
             return self._send(200, {"ok": True, "presets": STATE[key]})
+        if p == "/sud/api/upload":
+            if "from" in body:
+                return self._send(200, {"key": body["from"], "w": 1024, "h": 1024})
+            return self._send(200, {"key": "u" + uuid.uuid4().hex[:16], "w": 800, "h": 600})
         if p == "/sud/api/presets":
             key = {"sampling": "sampling_presets", "loras": "lora_presets"}[body["kind"]]
             L, name, op = STATE[key], body.get("name"), body.get("op")

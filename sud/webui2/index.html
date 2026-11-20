@@ -8,8 +8,8 @@
 <script>
   // тема до отрисовки, чтобы не мигало: та же настройка, что у классического интерфейса
   try {
-    let t = localStorage.getItem('sud-theme');
-    if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    let t = localStorage.getItem('sud2-theme') || localStorage.getItem('sud-theme');
+    if (!['light', 'dark', 'paper'].includes(t)) t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
     document.documentElement.dataset.theme = t;
   } catch (e) {}
 </script>
@@ -23,7 +23,7 @@
     <span class="st" id="st-conn"><span class="dot"></span><span>подключаюсь…</span></span>
     <span class="st" id="st-queue"></span>
     <button class="st save" id="st-save" title="Автосохранение на ноут (та же папка, что в классическом интерфейсе)">💾 …</button>
-    <button class="ic" id="btn-theme" title="Светлая / тёмная тема"></button>
+    <span class="themes"><button class="ic" id="btn-theme" title="Тема"></button><div class="tmenu" id="tmenu" hidden></div></span>
   </header>
   <div class="main">
     <nav class="nav">
@@ -42,6 +42,7 @@
           <button class="tb" data-action="vary_subtle" title="Лёгкая вариация: то же, чуть по-другому">≈ вариация</button>
           <button class="tb" data-action="vary_strong" title="Сильная вариация">≋ сильнее</button>
           <button class="tb" data-action="faces" title="Enhance: найти лица и перерисовать каждое отдельно">☺ лица</button>
+          <button class="tb" data-act="to-ip" title="Положить эту картинку в «Образцы» (Image Prompt)">⤒ в образцы</button>
           <button class="tb" data-act="reuse-seed" title="Вернуть seed этой картинки">seed</button>
           <a class="tb" id="dl" download title="Скачать">⬇</a>
         </div>
@@ -50,11 +51,13 @@
       <div class="strip" id="strip"></div>
       <div class="prompt">
         <div class="em" id="em" hidden></div>
+        <div class="ip" id="ip" hidden></div>
         <textarea id="prompt" rows="3" placeholder="Что нарисовать? Можно по-русски — кнопка RU→EN или автоперевод"></textarea>
         <div class="neg" id="neg-row" hidden><textarea id="negative" rows="2" placeholder="Чего не должно быть (негативный промпт)"></textarea></div>
         <div class="prow">
           <button class="chip" id="chip-tr" title="Перевести промпт на английский (DeepL / Google)">RU→EN</button>
           <button class="chip" id="chip-em" title="Эмбеддинги: клик — в промпт, Shift+клик — туда, где курсор">🧬 эмбеддинги</button>
+          <button class="chip" id="chip-ip" title="Образцы (Image Prompt): лицо, поза, контур, похожий стиль с фото">🖼 образцы</button>
           <button class="chip" id="chip-neg">− негатив</button>
           <button class="chip" id="chip-cam" title="Карточка «Камера» справа"></button>
           <button class="chip" id="chip-strip" title="Показать / спрятать ленту истории — больше места под картинку"></button>

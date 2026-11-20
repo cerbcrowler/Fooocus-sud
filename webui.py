@@ -1175,7 +1175,8 @@ sud.api.install(ctrls, dict(
     scheduler=scheduler_name, steps=overwrite_step, composition=sud_composition, camera=sud_camera,
     styles=style_selections, loras=lora_ctrls,
     input_image=input_image_checkbox, current_tab=current_tab, uov_method=uov_method, uov_image=uov_input_image,
-    enhance=enhance_checkbox, enhance_image=enhance_input_image, enhance_ctrls=enhance_ctrls))
+    enhance=enhance_checkbox, enhance_image=enhance_input_image, enhance_ctrls=enhance_ctrls,
+    ip_ctrls=ip_ctrls))
 
 shared.gradio_root.launch(
     inbrowser=args_manager.args.in_browser,
