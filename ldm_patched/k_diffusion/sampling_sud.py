@@ -8,7 +8,24 @@ from functools import partial
 import torch
 from tqdm.auto import trange
 
-from .sampling import to_d, get_ancestral_step, default_noise_sampler
+from . import utils
+
+
+# копии помощников из sampling.py (импорт оттуда дал бы цикл: sampling.py подключает этот модуль)
+def to_d(x, sigma, denoised):
+    return (x - denoised) / utils.append_dims(sigma, x.ndim)
+
+
+def get_ancestral_step(sigma_from, sigma_to, eta=1.):
+    if not eta:
+        return sigma_to, 0.
+    sigma_up = min(sigma_to, eta * (sigma_to ** 2 * (sigma_from ** 2 - sigma_to ** 2) / sigma_from ** 2) ** 0.5)
+    sigma_down = (sigma_to ** 2 - sigma_up ** 2) ** 0.5
+    return sigma_down, sigma_up
+
+
+def default_noise_sampler(x):
+    return lambda sigma, sigma_next: torch.randn_like(x)
 
 
 def _model_sampling(model):
