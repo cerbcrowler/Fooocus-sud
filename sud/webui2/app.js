@@ -193,7 +193,8 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
             setProgress(r.percent, r.title);
             if (r.preview) showImage(r.preview, null);
             if (r.done) {
-                const items = r.images.map((k, i) => ({ key: k, url: API + 'image/' + k, name: (r.names || [])[i], seed: r.seed, prompt: running.prompt, action: running.action }));
+                let items = r.images.map((k, i) => ({ key: k, url: API + 'image/' + k, name: (r.names || [])[i], seed: r.seed, prompt: running.prompt, action: running.action }));
+                if (running.action === 'faces') items = items.slice(-1);   // Enhance отдаёт ещё и исходник — он у нас уже есть
                 saveToLaptop(items);
                 history = items.concat(history).slice(0, 60);
                 lsSet(LS_HIST, history);
