@@ -108,7 +108,54 @@ ACTIONS = {
     "vary_subtle": ("uov", "Vary (Subtle)"),
     "vary_strong": ("uov", "Vary (Strong)"),
     "faces": ("enhance", None),
+    "inpaint": ("inpaint", None),
 }
+INPAINT_MODES = {   # как inpaint_mode_change в webui.py: (без начального латента, движок, сила, охват)
+    "replace": ("Inpaint or Outpaint (default)", False, "engine", 1.0, 0.618),
+    "detail": ("Improve Detail (face, hand, eyes, etc.)", False, "None", 0.5, 0.0),
+    "modify": ("Modify Content (add objects, change background, etc.)", True, "engine", 1.0, 0.0),
+}
+
+
+def _decode_mask(uri, h, w):
+    """data:image/png;base64 (белое — перерисовать) → HxWx3 uint8 размером с картинку."""
+    import numpy as np
+    from PIL import Image
+    if not uri:
+        return np.zeros((h, w, 3), dtype=np.uint8)
+    raw = base64.b64decode(str(uri).split(",", 1)[-1])
+    im = Image.open(io.BytesIO(raw)).convert("L")
+    if im.size != (w, h):
+        im = im.resize((w, h), Image.NEAREST)
+    m = (np.array(im) > 127).astype(np.uint8) * 255
+    return np.stack([m, m, m], axis=-1)
+
+
+def _apply_inpaint(action, img, put):
+    import modules.config as C
+    put_c = lambda c, v: _overrides.__setitem__(id(c), v)  # noqa: E731
+    mode = action.get("mode") if action.get("mode") in INPAINT_MODES else "replace"
+    _, no_latent, engine, d_strength, d_field = INPAINT_MODES[mode]
+    if engine == "engine":
+        engine = C.default_inpaint_engine_version
+    mask = _decode_mask(action.get("mask"), img.shape[0], img.shape[1])
+    out = [d for d in (action.get("outpaint") or []) if d in ("Left", "Right", "Top", "Bottom")]
+    if mode != "replace":
+        out = []   # дорисовка краёв — только в обычном режиме (как в Fooocus)
+    if not mask.any() and not out:
+        raise ValueError("закрась кистью, что перерисовать (или выбери стрелку — дорисовать край)")
+    put("inpaint_image", {"image": img, "mask": mask})
+    put("inpaint_prompt", str(action.get("prompt") or ""))
+    put("outpaint", out)
+    c = _named.get("inpaint_ctrls") or []
+    if len(c) >= 8:
+        put_c(c[1], no_latent)
+        put_c(c[2], engine)
+        put_c(c[3], min(1.0, max(0.0, float(action.get("strength", d_strength)))))
+        put_c(c[4], min(1.0, max(0.0, float(action.get("field", d_field)))))
+        put_c(c[5], False)                       # без продвинутой маски (SAM и т.п.)
+        put_c(c[6], bool(action.get("invert")))  # инвертировать маску
+        put_c(c[7], 0)
 
 
 def _load_image(key):
@@ -188,6 +235,8 @@ def _apply_action(action, put):
     if tab == "uov":
         put("uov_method", uov)
         put("uov_image", img)
+    elif tab == "inpaint":
+        _apply_inpaint(action, img, put)
     else:
         # Enhance #1: найти лица и перерисовать каждое отдельно (как ADetailer)
         put("enhance", True)
@@ -349,6 +398,7 @@ def _state():
         "busy": any(not r["done"] for r in _tasks.values()),
         "sec_per_image": _eta(1),
         "auto_translate": _auto_translate(),
+        "inpaint_modes": {k: {"strength": v[3], "field": v[4]} for k, v in INPAINT_MODES.items()},
     }
 
 

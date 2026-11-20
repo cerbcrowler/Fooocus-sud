@@ -1176,7 +1176,8 @@ sud.api.install(ctrls, dict(
     styles=style_selections, loras=lora_ctrls,
     input_image=input_image_checkbox, current_tab=current_tab, uov_method=uov_method, uov_image=uov_input_image,
     enhance=enhance_checkbox, enhance_image=enhance_input_image, enhance_ctrls=enhance_ctrls,
-    ip_ctrls=ip_ctrls))
+    ip_ctrls=ip_ctrls, inpaint_image=inpaint_input_image, inpaint_prompt=inpaint_additional_prompt,
+    outpaint=outpaint_selections, inpaint_ctrls=inpaint_ctrls))
 
 shared.gradio_root.launch(
     inbrowser=args_manager.args.in_browser,

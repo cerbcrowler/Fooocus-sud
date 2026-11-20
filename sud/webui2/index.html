@@ -42,16 +42,31 @@
           <button class="tb" data-action="vary_subtle" title="Лёгкая вариация: то же, чуть по-другому">≈ вариация</button>
           <button class="tb" data-action="vary_strong" title="Сильная вариация">≋ сильнее</button>
           <button class="tb" data-action="faces" title="Enhance: найти лица и перерисовать каждое отдельно">☺ лица</button>
+          <button class="tb" data-act="inpaint" title="Перерисовать часть картинки (маска кистью) или дорисовать края">✎ Inpaint</button>
           <button class="tb" data-act="to-ip" title="Положить эту картинку в «Образцы» (Image Prompt)">⤒ в образцы</button>
           <button class="tb" data-act="reuse-seed" title="Вернуть seed этой картинки">seed</button>
           <a class="tb" id="dl" download title="Скачать">⬇</a>
         </div>
+        <div class="inp-bar" id="inp-bar">
+          <button class="tb on" data-inp-tool="brush" title="Кисть (B)">🖌 кисть</button>
+          <button class="tb" data-inp-tool="erase" title="Ластик (E)">⌫ ластик</button>
+          <label class="inp-size" title="Размер кисти (Alt+колёсико, [ и ])">размер <input type="range" id="inp-size" min="4" max="400" step="2"><output id="inp-size-o"></output></label>
+          <button class="tb" data-inp="undo" title="Отменить (Ctrl+Z)">↶</button>
+          <button class="tb" data-inp="invert" title="Инвертировать: перерисовать всё, кроме закрашенного">⇄ инвертировать</button>
+          <button class="tb" data-inp="clear" title="Стереть всю маску">🗑 очистить</button>
+          <span class="sp"></span>
+          <button class="tb" data-inp="exit" title="Выйти (Esc)">✕ выйти</button>
+        </div>
+        <div class="inp-stage" id="inp-stage"><canvas id="inp-canvas"></canvas><div class="inp-cur" id="inp-cur"></div>
+          <button class="inp-ar" data-out="Left" title="Дорисовать слева">←</button><button class="inp-ar" data-out="Right" title="Дорисовать справа">→</button>
+          <button class="inp-ar" data-out="Top" title="Дорисовать сверху">↑</button><button class="inp-ar" data-out="Bottom" title="Дорисовать снизу">↓</button></div>
         <div class="progress" id="progress"><div class="bar"><b id="progress-bar"></b></div><span id="progress-text"></span></div>
       </div>
       <div class="strip" id="strip"></div>
       <div class="prompt">
         <div class="em" id="em" hidden></div>
         <div class="ip" id="ip" hidden></div>
+        <div class="inp" id="inp" hidden></div>
         <textarea id="prompt" rows="3" placeholder="Что нарисовать? Можно по-русски — кнопка RU→EN или автоперевод"></textarea>
         <div class="neg" id="neg-row" hidden><textarea id="negative" rows="2" placeholder="Чего не должно быть (негативный промпт)"></textarea></div>
         <div class="prow">

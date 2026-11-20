@@ -26,6 +26,7 @@
         steps: -1, cfg: 1, sharpness: 2, aspect: null, image_number: 1, output_format: 'png', performance: null,
         random: true, seed: '', closed: {}, camera: { enabled: false, angle: '', height: '', shot: '', weight: 1.2 },
         ip: [], ipOff: false, ipOpen: false,
+        inp: { mode: 'replace', prompt: '', strength: 1, field: 0.618, size: 60 },
     }, lsGet(LS, {}));
     let history = lsGet(LS_HIST, []);                 // [{key, url, seed, prompt}]
     let current = null, running = null;
@@ -329,7 +330,7 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
         $('#dl').href = item ? item.url : src;
         $('#dl').style.display = item ? '' : 'none';
     }
-    function select(item) { current = item; showImage(item.url, item); renderStrip(); }
+    function select(item) { if (IN.on && IN.item !== item) inpExit(); current = item; showImage(item.url, item); renderStrip(); }
     function applyStrip() {
         $('#strip').hidden = !!U.stripHidden;
         const c = $('#chip-strip');
@@ -567,6 +568,169 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
         if (!f) return;   // обычный текст — как всегда
         e.preventDefault(); ipUpload(null, f);
     });
+
+    // ---------- ✎ Inpaint: маска кистью поверх картинки, дорисовка краёв ----------
+    const INP_MODES = [['replace', 'Заменить', 'Обычный inpaint: нарисовать в маске по промпту; стрелки — дорисовать края'],
+        ['detail', 'Улучшить детали', 'Лицо, руки, глаза: аккуратно перерисовать, сохранив суть'],
+        ['modify', 'Изменить содержимое', 'Добавить предмет, сменить фон — маска рисуется с нуля']];
+    const IN = { on: false, item: null, w: 0, h: 0, tool: 'brush', undo: [], out: new Set(), drawing: false, last: null };
+    const inpDef = (m) => ((SRV && SRV.inpaint_modes && SRV.inpaint_modes[m]) || { replace: { strength: 1, field: 0.618 }, detail: { strength: 0.5, field: 0 }, modify: { strength: 1, field: 0 } }[m]);
+    const cv = () => $('#inp-canvas');
+    function inpEnter(item) {
+        if (!item || running) return;
+        const img = $('#viewer-img');
+        if (!img.naturalWidth) return;
+        Object.assign(IN, { on: true, item, w: img.naturalWidth, h: img.naturalHeight, undo: [], out: new Set() });
+        const c = cv(); c.width = IN.w; c.height = IN.h; c.getContext('2d').clearRect(0, 0, IN.w, IN.h);
+        if (!U.inp.size) U.inp.size = Math.round(IN.w / 16);
+        $('#viewer').classList.add('inp-on');
+        inpLayout(); inpTool('brush'); renderInp();
+    }
+    function inpExit() {
+        IN.on = false; $('#viewer').classList.remove('inp-on'); $('#inp').hidden = true;
+    }
+    function inpLayout() {   // холст ровно поверх картинки
+        if (!IN.on) return;
+        const v = $('#viewer').getBoundingClientRect(), r = $('#viewer-img').getBoundingClientRect(), st = $('#inp-stage');
+        Object.assign(st.style, { left: (r.left - v.left) + 'px', top: (r.top - v.top) + 'px', width: r.width + 'px', height: r.height + 'px' });
+        IN.scale = r.width / IN.w;
+        $('#inp-size').value = U.inp.size; $('#inp-size-o').textContent = U.inp.size;
+        const cur = $('#inp-cur'), d = U.inp.size * IN.scale; cur.style.width = cur.style.height = d + 'px';
+        document.querySelectorAll('.inp-ar').forEach((b) => {
+            b.classList.toggle('on', IN.out.has(b.dataset.out));
+            b.hidden = U.inp.mode !== 'replace';
+        });
+    }
+    window.addEventListener('resize', inpLayout);
+    try { new ResizeObserver(() => inpLayout()).observe($('#viewer')); } catch (e) { /* старый браузер */ }
+    function inpTool(t) {
+        IN.tool = t;
+        document.querySelectorAll('[data-inp-tool]').forEach((b) => b.classList.toggle('on', b.dataset.inpTool === t));
+        $('#inp-cur').classList.toggle('erase', t === 'erase');
+    }
+    function inpSnap() {
+        IN.undo.push(cv().getContext('2d').getImageData(0, 0, IN.w, IN.h));
+        if (IN.undo.length > 15) IN.undo.shift();
+    }
+    function inpUndo() { const s = IN.undo.pop(); if (s) { cv().getContext('2d').putImageData(s, 0, 0); renderInp(); } }
+    const inpHasMask = () => { const d = cv().getContext('2d').getImageData(0, 0, IN.w, IN.h).data; for (let i = 3; i < d.length; i += 64) if (d[i] > 0) return true; return false; };
+    function inpInvert() {
+        inpSnap();
+        const ctx = cv().getContext('2d'), im = ctx.getImageData(0, 0, IN.w, IN.h), d = im.data;
+        for (let i = 0; i < d.length; i += 4) { const a = d[i + 3] > 127 ? 0 : 255; d[i] = 211; d[i + 1] = 134; d[i + 2] = 155; d[i + 3] = a; }
+        ctx.putImageData(im, 0, 0); renderInp();
+    }
+    function inpMaskURI() {   // белое — перерисовать, чёрное — оставить
+        const m = document.createElement('canvas'); m.width = IN.w; m.height = IN.h;
+        const mc = m.getContext('2d'); mc.drawImage(cv(), 0, 0); mc.globalCompositeOperation = 'source-in'; mc.fillStyle = '#fff'; mc.fillRect(0, 0, IN.w, IN.h);
+        const o = document.createElement('canvas'); o.width = IN.w; o.height = IN.h;
+        const oc = o.getContext('2d'); oc.fillStyle = '#000'; oc.fillRect(0, 0, IN.w, IN.h); oc.drawImage(m, 0, 0);
+        return o.toDataURL('image/png');
+    }
+    const inpPt = (e) => { const r = cv().getBoundingClientRect(); return [(e.clientX - r.left) / r.width * IN.w, (e.clientY - r.top) / r.height * IN.h]; };
+    function inpLine(a, b) {
+        const ctx = cv().getContext('2d');
+        ctx.globalCompositeOperation = IN.tool === 'erase' ? 'destination-out' : 'source-over';
+        ctx.strokeStyle = ctx.fillStyle = 'rgb(211,134,155)'; ctx.lineWidth = U.inp.size; ctx.lineCap = ctx.lineJoin = 'round';
+        ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+    }
+    function renderInp() {
+        const box = $('#inp');
+        box.hidden = !IN.on;
+        if (!IN.on) return;
+        const P = U.inp, modes = INP_MODES.map(([k, t, h]) => `<button class="pill${P.mode === k ? ' on' : ''}" data-inp-mode="${k}" title="${h}">${t}</button>`).join('');
+        const outs = [...IN.out].map((d) => ({ Left: '←', Right: '→', Top: '↑', Bottom: '↓' }[d])).join(' ');
+        box.innerHTML = `<div class="ip-top"><b>Перерисовка</b><div class="pills">${modes}</div><span class="sp"></span><button class="x" data-inp="exit" title="Выйти (Esc)">✕</button></div>
+            <input type="text" id="inp-prompt" placeholder="Что нарисовать в маске (можно пусто — тогда по основному промпту)" value="${esc(P.prompt)}">
+            <div class="hint">Закрась кистью, что перерисовать${P.mode === 'replace' ? ', или выбери стрелки по краям — дорисовать кадр' : ''}. Основной промпт тоже учитывается${U.autoTr ? ', русский переведётся сам' : ''}.</div>
+            <div class="inp-r"><div class="row"><label title="Насколько сильно менять закрашенное (denoise)">Сила</label><input type="range" data-inp-r="strength" min="0" max="1" step="0.05" value="${P.strength}"><output>${(+P.strength).toFixed(2)}</output></div>
+            <div class="row"><label title="Сколько картинки вокруг маски модель видит: 0 — только маску, 1 — всю картинку">Охват</label><input type="range" data-inp-r="field" min="0" max="1" step="0.05" value="${P.field}"><output>${(+P.field).toFixed(2)}</output></div></div>
+            <div class="inp-go">${outs ? `<span class="dim">дорисовать: ${outs}</span>` : ''}<span class="sp"></span><button class="btn-s" data-inp="exit">отмена</button><button class="gen small" data-inp="run">Перерисовать ×${U.image_number}</button></div>`;
+        inpLayout();
+    }
+    async function inpRun() {
+        if (!IN.on || running) return;
+        const P = U.inp, mask = inpHasMask(), out = P.mode === 'replace' ? [...IN.out] : [];
+        if (!mask && !out.length) { flash('Сначала закрась, что перерисовать'); return; }
+        let prompt = P.prompt;
+        if (U.autoTr && CYR.test(prompt)) {
+            try { const r = await api('translate', { text: prompt }); if (r.text) { prompt = r.text; P.prompt = r.text; save(); } }
+            catch (e) { alert('Перевод не удался, ничего не запускаю: ' + e.message); return; }
+        }
+        if (U.autoTr && CYR.test($('#prompt').value + $('#negative').value)) {
+            try { await translateFields(); } catch (e) { alert('Перевод не удался, ничего не запускаю: ' + e.message); return; }
+        }
+        const action = { type: 'inpaint', key: IN.item.key, mask: mask ? inpMaskURI() : null, mode: P.mode, prompt,
+            strength: +P.strength, field: +P.field, outpaint: out };
+        inpExit();
+        generate({ action, prompt: $('#prompt').value, image_number: +U.image_number });
+    }
+    document.addEventListener('click', (e) => {
+        const t = e.target.closest('button');
+        if (!t) return;
+        if (t.dataset.act === 'inpaint' && current) { inpEnter(current); return; }
+        if (!IN.on) return;
+        if (t.dataset.inpTool) { inpTool(t.dataset.inpTool); return; }
+        if (t.dataset.out) { IN.out.has(t.dataset.out) ? IN.out.delete(t.dataset.out) : IN.out.add(t.dataset.out); renderInp(); return; }
+        if (t.dataset.inpMode) { U.inp.mode = t.dataset.inpMode; Object.assign(U.inp, inpDef(U.inp.mode)); save(); renderInp(); return; }
+        const a = t.dataset.inp;
+        if (a === 'exit') inpExit();
+        else if (a === 'undo') inpUndo();
+        else if (a === 'invert') inpInvert();
+        else if (a === 'clear') { inpSnap(); cv().getContext('2d').clearRect(0, 0, IN.w, IN.h); renderInp(); }
+        else if (a === 'run') inpRun();
+    });
+    document.addEventListener('input', (e) => {
+        const t = e.target;
+        if (t.id === 'inp-prompt') { U.inp.prompt = t.value; save(); }
+        if (t.dataset.inpR) { U.inp[t.dataset.inpR] = +t.value; t.nextElementSibling.textContent = (+t.value).toFixed(2); save(); }
+        if (t.id === 'inp-size') { U.inp.size = +t.value; save(); inpLayout(); }
+    });
+    // рисование
+    const stage = () => $('#inp-stage');
+    document.addEventListener('pointerdown', (e) => {
+        if (!IN.on || e.target !== cv() || e.button !== 0) return;
+        e.preventDefault(); cv().setPointerCapture(e.pointerId);
+        inpSnap(); IN.drawing = true; IN.last = inpPt(e); inpLine(IN.last, IN.last);
+    });
+    document.addEventListener('pointermove', (e) => {
+        if (!IN.on) return;
+        if (e.target === cv() || IN.drawing) {
+            const r = stage().getBoundingClientRect(), cur = $('#inp-cur');
+            cur.style.left = (e.clientX - r.left) + 'px'; cur.style.top = (e.clientY - r.top) + 'px'; cur.hidden = false;
+        }
+        if (!IN.drawing) return;
+        const p = inpPt(e); inpLine(IN.last, p); IN.last = p;
+    });
+    document.addEventListener('pointerup', () => { IN.drawing = false; });
+    document.addEventListener('pointerout', (e) => { if (e.target === cv() && !IN.drawing) $('#inp-cur').hidden = true; });
+    document.addEventListener('wheel', (e) => {
+        if (!IN.on || !e.altKey || !e.target.closest('#inp-stage')) return;
+        e.preventDefault();
+        U.inp.size = Math.max(4, Math.min(400, Math.round(U.inp.size * (e.deltaY < 0 ? 1.12 : 1 / 1.12)))); save(); inpLayout();
+    }, { passive: false });
+    document.addEventListener('keydown', (e) => {
+        if (!IN.on || ['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); inpUndo(); }
+        else if (e.key === 'Escape') inpExit();
+        else if (e.key === 'b' || e.key === 'и') inpTool('brush');
+        else if (e.key === 'e' || e.key === 'у') inpTool('erase');
+        else if (e.key === '[' || e.key === ']') { U.inp.size = Math.max(4, Math.min(400, U.inp.size + (e.key === ']' ? 8 : -8))); save(); inpLayout(); }
+    });
+    // чужое фото: перетащить в просмотр → в ленту (дальше Inpaint, апскейл и т.п.)
+    document.addEventListener('drop', async (e) => {
+        if (!e.target.closest || !e.target.closest('#viewer') || IN.on) return;
+        const f = [...e.dataTransfer.files].find((x) => x.type.startsWith('image/'));
+        if (!f) return;
+        e.preventDefault();
+        try {
+            const res = await fetch(API + 'upload', { method: 'POST', headers: { 'Content-Type': f.type }, body: f });
+            const r = await res.json(); if (!res.ok) throw new Error(r.error || res.status);
+            const item = { key: r.key, url: API + 'image/' + r.key, seed: '—', prompt: '', name: f.name };
+            history.unshift(item); lsSet(LS_HIST, history); select(item);
+        } catch (er) { alert('Не получилось взять картинку: ' + er.message); }
+    });
+    document.addEventListener('dragover', (e) => { if (e.target.closest && e.target.closest('#viewer') && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
 
     // ---------- 🧬 эмбеддинги (данные — /sud/api/embeddings = sud/ui_embeddings.py) ----------
     const EM = { data: null, open: false, filter: 'all', q: '', folder: U.emFolder || 'all', caret: null, loading: false };

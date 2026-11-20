@@ -28,6 +28,7 @@ STATE = {
                  "sampler": "lcm", "scheduler": "sgm_uniform", "steps": 6, "cfg": 1.0, "sharpness": 5.0,
                  "aspect": "1024×1024", "performance": "Speed", "output_format": "png", "image_number": 1, "negative": ""},
     "auto_translate": True,
+    "inpaint_modes": {"replace": {"strength": 1.0, "field": 0.618}, "detail": {"strength": 0.5, "field": 0.0}, "modify": {"strength": 1.0, "field": 0.0}},
     "ip": {"types": ["ImagePrompt", "PyraCanny", "CPDS", "OpenPose", "FaceSwap"], "slots": 4,
            "defaults": {"ImagePrompt": [0.5, 0.6], "FaceSwap": [0.9, 0.75], "PyraCanny": [0.5, 1.0], "CPDS": [0.5, 1.0], "OpenPose": [0.8, 0.9]}},
     "sampling_presets": [
