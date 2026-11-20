@@ -8,6 +8,7 @@
         x: SVG('<path d="M18 6l-12 12"/><path d="M6 6l12 12"/>'),
         plus: SVG('<path d="M12 5l0 14"/><path d="M5 12l14 0"/>'),
         chev: SVG('<path d="M6 9l6 6l6 -6"/>'),
+        star: SVG('<path d="M12 17.75l-6.172 3.245l1.179 -6.873l-5 -4.867l6.9 -1l3.086 -6.253l3.086 6.253l6.9 1l-5 4.867l1.179 6.873z"/>'),
     };
     const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const ls = {
@@ -71,13 +72,19 @@
                 return out;
             },
             summary: (p) => `${(p.loras || []).length} LoRA`,
+            startup: true,   // при открытии страницы применить пресет «★» (по умолчанию — первый)
             empty: 'Пока нет пресетов — собери лоры и сохрани набор кнопкой «из текущих».',
         },
     };
 
     // ---------- одна панель ----------
     function Panel(kind, K) {
-        const LS_ACTIVE = `sud-pr-${kind}-active`, LS_OPEN = `sud-pr-${kind}-open`;
+        const LS_ACTIVE = `sud-pr-${kind}-active`, LS_OPEN = `sud-pr-${kind}-open`, LS_START = `sud-pr-${kind}-start`;
+        let booted = false;
+        const startName = () => {
+            const n = ls.get(LS_START);
+            return presets && presets.some((p) => p.name === n) ? n : (presets && presets[0] ? presets[0].name : null);
+        };
         const prefix = `sud-pr-${kind}`;
         let presets = null, active = ls.get(LS_ACTIVE), lastRaw = '', lastKey = '';
         let editing = null, confirmDel = null, msg = '', msgTimer = null;
@@ -128,7 +135,7 @@
                     ? `<span class="sud-sp-ic danger" data-act="delete" data-sure="1">удалить?</span>`
                     : `<span class="sud-sp-ic" data-act="delete" title="Удалить">${I.x}</span>`;
                 return `<span class="sud-sp-chip${on ? ' on' : ''}${match && match.name === p.name ? ' match' : ''}" data-name="${esc(p.name)}" title="${esc((p.note ? p.note + '\n' : '') + K.summary(p))}">
-                    <span class="sud-sp-name">${esc(p.name)}</span>
+                    <span class="sud-sp-name">${esc(p.name)}</span>${K.startup ? `<span class="sud-sp-ic sud-sp-star${startName() === p.name ? ' on' : ''}" data-act="start" title="${startName() === p.name ? '★ Применяется при открытии страницы' : 'Применять при открытии страницы'}">${I.star}</span>` : ''}
                     <span class="sud-sp-ic" data-act="rename" title="Переименовать">${I.edit}</span>${del}</span>`;
             }).join('');
             const add = editing && editing.kind === 'add'
@@ -159,6 +166,12 @@
                     presets = st.presets || [];
                     if (st.applied) setActive(st.applied);
                     if (st.message) flash(st.message); else render(true);
+                    if (!booted) {
+                        booted = true;
+                        // Fooocus-sud: при открытии страницы — свой пресет вместо «LoRA по умолчанию» из настроек
+                        const target = K.startup && presets.find((p) => p.name === startName());
+                        if (target && K.diffs(target, K.current()).length) { setActive(target.name); send({ op: 'apply', name: target.name }); }
+                    }
                 } catch (e) { /* ignore */ }
                 return;
             }
@@ -173,6 +186,7 @@
             const name = chip && chip.dataset.name;
             if (a === 'toggle') { opened = !opened; ls.set(LS_OPEN, opened ? '1' : '0'); editing = null; render(true); return; }
             if (a === 'add') { editing = { kind: 'add' }; render(true); return; }
+            if (a === 'start') { ls.set(LS_START, name); render(true); return; }
             if (a === 'rename') { editing = { kind: 'rename', name }; render(true); return; }
             if (a === 'delete') {
                 if (!actEl.dataset.sure) {

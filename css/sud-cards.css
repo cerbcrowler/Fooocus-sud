@@ -707,3 +707,7 @@ body.sud-drag-active, body.sud-drag-active * { user-select: none !important; cur
 .sud-pose-toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 1600; background: var(--sud-accent); color: #fbf1c7; padding: 9px 16px; border-radius: 10px; font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,.35); }
 @media (max-width: 760px) { .sud-pose-body { grid-template-columns: 1fr; grid-template-rows: 1fr auto; } .sud-pose-side { border-left: 0; border-top: 1px solid var(--sud-line); max-height: 38vh; } }
 .sud-pose-g { cursor: copy; }
+
+/* ★ пресет LoRA, применяемый при открытии страницы */
+.sud-sp-star.on { display: inline-flex; color: #d79921; }
+.sud-sp-star.on .sud-ico { fill: currentColor; }

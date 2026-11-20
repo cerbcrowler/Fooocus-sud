@@ -68,10 +68,11 @@ def css_html():
 
 
 def reload_javascript():
-    js = javascript_html()
-    css = css_html()
-
     def template_response(*args, **kwargs):
+        # Fooocus-sud: метки времени файлов считаем на каждый запрос страницы — правки JS/CSS
+        # подхватываются обычным F5, без перезапуска Fooocus и без залипшего кэша браузера
+        js = javascript_html()
+        css = css_html()
         res = GradioTemplateResponseOriginal(*args, **kwargs)
         res.body = res.body.replace(b'</head>', f'{js}</head>'.encode("utf8"))
         res.body = res.body.replace(b'</body>', f'{css}</body>'.encode("utf8"))
