@@ -894,6 +894,24 @@ def downloading_controlnet_canny():
     return os.path.join(path_controlnet, 'control-lora-canny-rank128.safetensors')
 
 
+def downloading_controlnet_pose():
+    """Fooocus-sud: ControlNet OpenPose для SDXL (xinsir, fp16, Apache-2.0)."""
+    load_file_from_url(
+        url='https://huggingface.co/xinsir/controlnet-openpose-sdxl-1.0/resolve/main/diffusion_pytorch_model.safetensors',
+        model_dir=path_controlnet,
+        file_name='xinsir_openpose_sdxl.safetensors'
+    )
+    return os.path.join(path_controlnet, 'xinsir_openpose_sdxl.safetensors')
+
+
+def downloading_dwpose():
+    """Fooocus-sud: DWPose (детектор людей yolox + поза 133 точки), ONNX."""
+    for name in ('yolox_l.onnx', 'dw-ll_ucoco_384.onnx'):
+        load_file_from_url(url=f'https://huggingface.co/yzd-v/DWPose/resolve/main/{name}',
+                           model_dir=path_controlnet, file_name=name)
+    return os.path.join(path_controlnet, 'yolox_l.onnx'), os.path.join(path_controlnet, 'dw-ll_ucoco_384.onnx')
+
+
 def downloading_controlnet_cpds():
     load_file_from_url(
         url='https://huggingface.co/lllyasviel/misc/resolve/main/fooocus_xl_cpds_128.safetensors',

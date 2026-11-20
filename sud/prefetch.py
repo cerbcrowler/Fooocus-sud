@@ -45,6 +45,12 @@ GROUPS = {
         (f"{MISC}/control-lora-canny-rank128.safetensors", f"{M}/controlnet", "control-lora-canny-rank128.safetensors", 377),
         (f"{MISC}/fooocus_xl_cpds_128.safetensors", f"{M}/controlnet", "fooocus_xl_cpds_128.safetensors", 377),
     ]),
+    "pose": ("OpenPose: ControlNet поз (xinsir) + DWPose", [
+        (f"{HF}/xinsir/controlnet-openpose-sdxl-1.0/resolve/main/diffusion_pytorch_model.safetensors",
+         f"{M}/controlnet", "xinsir_openpose_sdxl.safetensors", 2502),
+        (f"{HF}/yzd-v/DWPose/resolve/main/yolox_l.onnx", f"{M}/controlnet", "yolox_l.onnx", 217),
+        (f"{HF}/yzd-v/DWPose/resolve/main/dw-ll_ucoco_384.onnx", f"{M}/controlnet", "dw-ll_ucoco_384.onnx", 134),
+    ]),
     "describe": ("Describe (BLIP и теги для аниме)", [
         (f"{MISC}/model_base_caption_capfilt_large.pth", f"{M}/clip_vision", "model_base_caption_capfilt_large.pth", 854),
         ("https://dl.fbaipublicfiles.com/deit/deit_base_patch16_224-b5f2ef4d.pth", TORCH_HUB,

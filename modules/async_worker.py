@@ -289,7 +289,8 @@ def worker():
         if 'cn' in goals:
             for cn_flag, cn_path in [
                 (flags.cn_canny, controlnet_canny_path),
-                (flags.cn_cpds, controlnet_cpds_path)
+                (flags.cn_cpds, controlnet_cpds_path),
+                (flags.cn_pose, getattr(async_task, 'controlnet_pose_path', None)),  # Fooocus-sud
             ]:
                 for cn_img, cn_stop, cn_weight in async_task.cn_tasks[cn_flag]:
                     positive_cond, negative_cond = core.apply_controlnet(
@@ -480,6 +481,10 @@ def worker():
 
         return img_paths
 
+    def looks_like_pose(img):
+        """Fooocus-sud: уже готовый скелет OpenPose (почти весь кадр чёрный) — распознавать не нужно."""
+        return float((img.max(axis=2) < 16).mean()) > 0.85
+
     def apply_control_nets(async_task, height, ip_adapter_face_path, ip_adapter_path, width, current_progress):
         for task in async_task.cn_tasks[flags.cn_canny]:
             cn_img, cn_stop, cn_weight = task
@@ -500,6 +505,19 @@ def worker():
             if not async_task.skipping_cn_preprocessor:
                 cn_img = preprocessors.cpds(cn_img)
 
+            cn_img = HWC3(cn_img)
+            task[0] = core.numpy_to_pytorch(cn_img)
+            if async_task.debugging_cn_preprocessor:
+                yield_result(async_task, cn_img, current_progress, async_task.black_out_nsfw, do_not_show_finished_images=True)
+        for task in async_task.cn_tasks[flags.cn_pose]:  # Fooocus-sud: OpenPose через DWPose
+            cn_img, cn_stop, cn_weight = task
+            cn_img = resize_image(HWC3(cn_img), width=width, height=height)
+            if not async_task.skipping_cn_preprocessor and not looks_like_pose(cn_img):
+                from extras import dwpose
+                progressbar(async_task, current_progress, 'DWPose: ищу позу ...')
+                cn_img, poses = dwpose.detect(cn_img, *async_task.dwpose_paths)
+                if not poses:
+                    print('[OpenPose] На картинке не нашлось людей — поза не задаётся')
             cn_img = HWC3(cn_img)
             task[0] = core.numpy_to_pytorch(cn_img)
             if async_task.debugging_cn_preprocessor:
@@ -1056,6 +1074,9 @@ def worker():
                 controlnet_canny_path = modules.config.downloading_controlnet_canny()
             if len(async_task.cn_tasks[flags.cn_cpds]) > 0:
                 controlnet_cpds_path = modules.config.downloading_controlnet_cpds()
+            if len(async_task.cn_tasks[flags.cn_pose]) > 0:  # Fooocus-sud: OpenPose
+                async_task.controlnet_pose_path = modules.config.downloading_controlnet_pose()
+                async_task.dwpose_paths = modules.config.downloading_dwpose()
             if len(async_task.cn_tasks[flags.cn_ip]) > 0:
                 clip_vision_path, ip_negative_path, ip_adapter_path = modules.config.downloading_ip_adapters('ip')
             if len(async_task.cn_tasks[flags.cn_ip_face]) > 0:
@@ -1279,7 +1300,8 @@ def worker():
 
         # Load or unload CNs
         progressbar(async_task, current_progress, 'Loading control models ...')
-        pipeline.refresh_controlnets([controlnet_canny_path, controlnet_cpds_path])
+        pipeline.refresh_controlnets([controlnet_canny_path, controlnet_cpds_path,
+                                      getattr(async_task, 'controlnet_pose_path', None)])  # Fooocus-sud: + OpenPose
         ip_adapter.load_ip_adapter(clip_vision_path, ip_negative_path, ip_adapter_path)
         ip_adapter.load_ip_adapter(clip_vision_path, ip_negative_path, ip_adapter_face_path)
 
