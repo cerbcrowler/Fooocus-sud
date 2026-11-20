@@ -107,6 +107,31 @@ select, input[type=number], input[type=text] { width: 100%; background: var(--bg
 .pill.dragging { opacity: .4; }
 .pill.drop-l { box-shadow: -3px 0 0 var(--acc); }
 .pill.drop-r { box-shadow: 3px 0 0 var(--acc); }
+.pill.tool { border-style: dashed; color: var(--dim); padding: 2px 7px; }
+.pill.tool:hover { color: var(--acc); }
+.pill.tool.on { border-style: solid; color: var(--yel); border-color: var(--yel); background: transparent; }
+.pill.edit { border-color: var(--yel); color: var(--yel); box-shadow: 0 0 0 1px var(--yel) inset; }
+.pe-hint { margin: 6px 0 2px; }
+.pe { margin: 8px 0 4px; padding: 8px; border: 1px solid var(--line2); border-left: 3px solid var(--yel); border-radius: 8px; display: grid; gap: 6px; }
+.pe-t { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--dim); }
+.pe-t .x { background: none; border: 0; color: var(--dim2); padding: 0 2px; }
+.pe-t .x:hover { color: var(--red, #fb4934); }
+.pe-v { font-size: 11px; color: var(--dim); line-height: 1.4; }
+.pe-v span { color: var(--dim2); }
+.pe-v.now { color: var(--fg2); }
+.pe-v em { color: var(--grn, #b8bb26); font-style: normal; }
+.pe-err { font-size: 11.5px; color: var(--red, #fb4934); }
+.pe-b { display: flex; flex-wrap: wrap; gap: 5px; }
+.btn-s { border: 1px solid var(--line2); background: transparent; color: var(--fg2); border-radius: 7px; padding: 3px 9px; font-size: 12px; }
+.btn-s:hover:not([disabled]) { border-color: var(--acc); color: var(--acc); }
+.btn-s[disabled] { opacity: .4; cursor: default; }
+.btn-s.acc { border-color: var(--acc); color: var(--acc); background: var(--acc-bg); }
+.btn-s.on { color: var(--yel); border-color: var(--yel); }
+.btn-s.danger { margin-left: auto; }
+.btn-s.danger:hover, .btn-s.danger.sure { border-color: var(--red, #fb4934); color: var(--red, #fb4934); }
+#flash { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); opacity: 0; pointer-events: none; transition: .2s;
+    background: var(--panel); border: 1px solid var(--acc); color: var(--acc); border-radius: 999px; padding: 5px 14px; font-size: 12.5px; z-index: 99; }
+#flash.show { opacity: 1; transform: translate(-50%, 0); }
 .half { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
 .lora { display: grid; grid-template-columns: 12px 18px minmax(0, 1fr) 18px; gap: 4px 6px; align-items: center; margin: 4px 0; padding: 3px 0; border-radius: 6px; }
 .lora .grip { color: var(--dim2); cursor: grab; font-size: 11px; letter-spacing: -2px; user-select: none; touch-action: none; }

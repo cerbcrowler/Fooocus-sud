@@ -54,6 +54,83 @@
     const camOn = () => U.camera.enabled && (U.camera.angle || U.camera.height || U.camera.shot);
     const camSummary = () => (camOn() ? [camLabel(CAM_ANGLES, U.camera.angle), camLabel(CAM_H, U.camera.height), camLabel(CAM_S, U.camera.shot)].filter((x) => x && x !== '—').join(' · ') : 'выкл');
 
+    // ---------- пресеты: сохранить текущие / переименовать / заметка / перезаписать / удалить ----------
+    const PE = { kind: null, name: null, nameVal: '', noteVal: '', del: false, busy: false, err: '' };   // name=null — новый
+    const EDIT = { sampling: false, loras: false };                                                     // режим ✎: клик по пилюле = править
+    const presetsOf = (kind) => (kind === 'sampling' ? SRV.sampling_presets : SRV.lora_presets);
+    const curValues = (kind) => (kind === 'sampling'
+        ? { sampler: U.sampler, scheduler: U.scheduler, cfg: +U.cfg, steps: +U.steps, sharpness: +U.sharpness }
+        : { loras: U.loras.filter((l) => l[1] && l[1] !== 'None').map(([on, name, w]) => ({ name, weight: Math.round(+w * 100) / 100, enabled: !!on })) });
+    const sumOf = (kind, v) => (kind === 'sampling'
+        ? `${v.sampler} · ${v.scheduler} · ${+v.steps < 0 ? 'шаги авто' : v.steps + ' шагов'} · CFG ${(+v.cfg).toFixed(1)} · резкость ${+v.sharpness}`
+        : ((v.loras || []).map((l) => `${l.enabled === false ? '⊘ ' : ''}${short(l.name)} ×${(+l.weight).toFixed(1)}`).join(', ') || 'без LoRA'));
+    function peOpen(kind, name) {
+        const p = name == null ? null : presetsOf(kind).find((x) => x.name === name);
+        Object.assign(PE, { kind, name: p ? p.name : null, nameVal: p ? p.name : '', noteVal: p ? (p.note || '') : '', del: false, busy: false, err: '' });
+        renderRight();
+        const inp = document.querySelector(`.pe[data-pe-kind="${kind}"] [data-pe="name"]`);
+        if (inp) { inp.focus(); inp.select(); }
+    }
+    const peClose = () => { PE.kind = null; renderRight(); };
+    function peBox(kind) {
+        if (PE.kind !== kind) return EDIT[kind] ? '<div class="hint pe-hint">✎ Нажми пресет, чтобы переименовать, перезаписать или удалить. Перетаскивать тоже можно.</div>' : '';
+        const isNew = PE.name == null, p = isNew ? null : presetsOf(kind).find((x) => x.name === PE.name);
+        const now = sumOf(kind, curValues(kind)), was = p ? sumOf(kind, p) : '', same = p && now === was;
+        const star = kind === 'loras' && p && (rawGet('sud-pr-loras-start') || (SRV.lora_presets[0] || {}).name) === p.name;
+        return `<div class="pe" data-pe-kind="${kind}">
+            <div class="pe-t">${isNew ? 'Новый пресет из текущих настроек' : 'Пресет'}<button class="x" data-pe-do="close" title="Закрыть (Esc)">✕</button></div>
+            <input type="text" data-pe="name" placeholder="Название" value="${esc(PE.nameVal)}" maxlength="60">
+            <input type="text" data-pe="note" placeholder="Заметка — видна при наведении (необязательно)" value="${esc(PE.noteVal)}" maxlength="200">
+            ${isNew ? `<div class="pe-v"><span>будет:</span> ${esc(now)}</div>`
+                : (same ? `<div class="pe-v"><span>в пресете:</span> ${esc(was)} <em>= сейчас</em></div>`
+                    : `<div class="pe-v"><span>в пресете:</span> ${esc(was)}</div><div class="pe-v now"><span>сейчас:</span> ${esc(now)}</div>`)}
+            ${PE.err ? `<div class="pe-err">${esc(PE.err)}</div>` : ''}
+            <div class="pe-b">${isNew
+                ? '<button class="btn-s acc" data-pe-do="add">Сохранить</button><button class="btn-s" data-pe-do="close">Отмена</button>'
+                : `<button class="btn-s acc" data-pe-do="edit" title="Сохранить название и заметку">Сохранить</button>
+                   <button class="btn-s" data-pe-do="update"${same ? ' disabled' : ''} title="Записать в пресет то, что выставлено сейчас">⟳ Записать текущие</button>
+                   ${kind === 'loras' ? `<button class="btn-s${star ? ' on' : ''}" data-pe-do="star" title="Ставится при первом запуске (★ — как в классическом)">★</button>` : ''}
+                   <button class="btn-s danger${PE.del ? ' sure' : ''}" data-pe-do="delete" title="Удалить пресет">${PE.del ? 'Точно удалить?' : '🗑'}</button>`}</div></div>`;
+    }
+    async function peDo(what) {
+        const kind = PE.kind;
+        if (!kind || PE.busy) return;
+        if (what === 'close') { peClose(); return; }
+        if (what === 'star') {
+            try { localStorage.setItem('sud-pr-loras-start', PE.name); } catch (e) { /* */ }
+            renderRight(); return;
+        }
+        if (what === 'delete' && !PE.del) { PE.del = true; renderRight(); return; }
+        const name = PE.nameVal.split(/\s+/).filter(Boolean).join(' ');
+        if ((what === 'add' || what === 'edit') && !name) { PE.err = 'Введи название'; renderRight(); return; }
+        const body = { kind, op: what, name: what === 'add' ? name : PE.name };
+        if (what === 'add') Object.assign(body, { note: PE.noteVal, values: curValues(kind) });
+        if (what === 'update') body.values = curValues(kind);
+        if (what === 'edit') Object.assign(body, { new: name, note: PE.noteVal });
+        PE.busy = true; PE.err = '';
+        try {
+            const r = await api('presets', body);
+            SRV[kind === 'sampling' ? 'sampling_presets' : 'lora_presets'] = r.presets;
+            if (kind === 'loras' && rawGet('sud-pr-loras-start') === PE.name) {   // ★ следует за переименованием/удалением
+                try { if (what === 'delete') localStorage.removeItem('sud-pr-loras-start'); else if (what === 'edit') localStorage.setItem('sud-pr-loras-start', name); } catch (e) { /* */ }
+            }
+            PE.busy = false;
+            if (what === 'delete') { peClose(); return; }
+            if (what === 'add' || what === 'edit') { PE.name = name; PE.nameVal = name; }
+            PE.del = false;
+            flash(what === 'add' ? 'Пресет сохранён' : what === 'update' ? 'Пресет перезаписан' : 'Сохранено');
+            if (what === 'add') { PE.kind = null; }
+            renderRight();
+        } catch (e) { PE.busy = false; PE.err = e.message; renderRight(); }
+    }
+    function flash(text) {
+        let el = $('#flash');
+        if (!el) { el = document.createElement('div'); el.id = 'flash'; document.body.appendChild(el); }
+        el.textContent = '✓ ' + text; el.classList.add('show');
+        clearTimeout(flash.t); flash.t = setTimeout(() => el.classList.remove('show'), 1600);
+    }
+    const peTools = (kind) => `<button class="pill tool" data-pe-new="${kind}" title="Сохранить текущие настройки как новый пресет">＋</button><button class="pill tool${EDIT[kind] ? ' on' : ''}" data-pe-mode="${kind}" title="Правка пресетов: переименовать, перезаписать, удалить">✎</button>`;
+
     function renderRight() {
         if (!SRV) return;
         const S = SRV;
@@ -63,20 +140,21 @@
         // Сэмплинг
         const sp = S.sampling_presets.map((p) => {
             const on = p.sampler === U.sampler && p.scheduler === U.scheduler && +p.steps === +U.steps && Math.abs(p.cfg - U.cfg) < 0.01 && Math.abs(p.sharpness - U.sharpness) < 0.01;
-            return `<button class="pill${on ? ' on' : ''}" data-sp="${esc(p.name)}" title="${esc(p.note || '')}">${esc(p.name)}</button>`;
+            const ed = PE.kind === 'sampling' && PE.name === p.name;
+            return `<button class="pill${on ? ' on' : ''}${ed ? ' edit' : ''}" data-sp="${esc(p.name)}" title="${esc(p.note || '')}">${esc(p.name)}</button>`;
         }).join('');
         html += card('sampling', '<b>Сэмплинг</b>', `${U.sampler} · ${U.scheduler} · ${U.steps < 0 ? 'авто' : U.steps}`,
-            `<div class="pills" data-kind="sampling" title="Пресеты можно перетаскивать — порядок сохранится">${sp || '<span class="hint">пресетов нет</span>'}</div>
+            `<div class="pills" data-kind="sampling" title="Пресеты можно перетаскивать — порядок сохранится">${sp || '<span class="hint">пресетов нет</span>'}${peTools('sampling')}</div>${peBox('sampling')}
              <div class="half"><select data-u="sampler">${opts(S.samplers, U.sampler)}</select><select data-u="scheduler">${opts(S.schedulers, U.scheduler)}</select></div>
              ${range('steps', 'Шаги', -1, 60, 1, U.steps)}${range('cfg', 'CFG', 1, 15, 0.1, U.cfg)}${range('sharpness', 'Резкость', 0, 30, 1, U.sharpness)}`);
         // LoRA
-        const lp = S.lora_presets.map((p) => `<button class="pill" data-lp="${esc(p.name)}" title="${esc((p.loras || []).map((l) => short(l.name) + ' ×' + l.weight).join(', '))}">${esc(p.name)}${p.name === startLora ? '<span class="star">★</span>' : ''}</button>`).join('');
+        const lp = S.lora_presets.map((p) => `<button class="pill${PE.kind === 'loras' && PE.name === p.name ? ' edit' : ''}" data-lp="${esc(p.name)}" title="${esc((p.note ? p.note + '\n' : '') + (p.loras || []).map((l) => short(l.name) + ' ×' + l.weight).join(', '))}">${esc(p.name)}${p.name === startLora ? '<span class="star">★</span>' : ''}</button>`).join('');
         const rows = U.loras.map(([on, name, w], i) => `<div class="lora" data-row="${i}"><span class="grip" title="Потяни, чтобы поменять порядок">⋮⋮</span><input type="checkbox" data-lora-on="${i}"${on ? ' checked' : ''}>
             <select data-lora-name="${i}"><option value="None">—</option>${opts(S.loras, name, (x) => x.replace(/\.safetensors$/i, ''))}</select>
             <button class="x" data-lora-del="${i}" title="Убрать">✕</button>
             <div class="w"><input type="range" data-lora-w="${i}" min="${S.lora_min}" max="${S.lora_max}" step="0.1" value="${w}"><output>${(+w).toFixed(1)}</output></div></div>`).join('');
         html += card('loras', '<b>LoRA</b>', `${U.loras.filter((l) => l[0]).length} из ${S.lora_slots}`,
-            `<div class="pills" data-kind="loras">${lp}</div><div class="loras">${rows}</div>${U.loras.length < S.lora_slots
+            `<div class="pills" data-kind="loras">${lp}${peTools('loras')}</div>${peBox('loras')}<div class="loras">${rows}</div>${U.loras.length < S.lora_slots
                 ? '<button class="add" data-act="lora-add">＋ Добавить LoRA</button>'
                 : `<div class="add full" title="Больше слотов: ⚙️ Настройки классического интерфейса → «Слотов LoRA»">Все ${S.lora_slots} слота заняты · убери лишнюю ✕ или добавь слотов в ⚙️ Настройках</div>`}`);
         // Разрешение
@@ -241,6 +319,15 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
         }
         if (t.dataset.h !== undefined) { select(history[+t.dataset.h]); openLB(+t.dataset.h); return; }
         if (t.dataset.view) { switchView(t.dataset.view); return; }
+        if (t.dataset.peNew) { EDIT[t.dataset.peNew] = false; peOpen(t.dataset.peNew, null); return; }
+        if (t.dataset.peMode) {
+            const k = t.dataset.peMode; EDIT[k] = !EDIT[k];
+            if (!EDIT[k] && PE.kind === k) PE.kind = null;
+            renderRight(); return;
+        }
+        if (t.dataset.peDo) { peDo(t.dataset.peDo); return; }
+        if (t.dataset.sp && EDIT.sampling) { peOpen('sampling', t.dataset.sp); return; }
+        if (t.dataset.lp && EDIT.loras) { peOpen('loras', t.dataset.lp); return; }
         if (t.dataset.sp) {
             const p = SRV.sampling_presets.find((x) => x.name === t.dataset.sp);
             Object.assign(U, { sampler: p.sampler, scheduler: p.scheduler, steps: p.steps, cfg: p.cfg, sharpness: p.sharpness });
@@ -286,6 +373,7 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
         const t = e.target;
         if (t.id === 'prompt') { U.prompt = t.value; save(); return; }
         if (t.id === 'negative') { U.negative = t.value; save(); return; }
+        if (t.dataset.pe) { PE[t.dataset.pe + 'Val'] = t.value; if (PE.err) { PE.err = ''; const er = t.parentElement.querySelector('.pe-err'); if (er) er.remove(); } return; }
         if (t.dataset.u && t.type === 'range') { U[t.dataset.u] = +t.value; t.nextElementSibling.textContent = t.value; save(); if (t.dataset.u === 'image_number') updateGenButton(); return; }
         if (t.dataset.loraW !== undefined) { U.loras[+t.dataset.loraW][2] = +t.value; t.nextElementSibling.textContent = (+t.value).toFixed(1); save(); return; }
         if (t.dataset.cam === 'weight') { U.camera.weight = +t.value; t.nextElementSibling.textContent = (+t.value).toFixed(1); save(); return; }
@@ -417,14 +505,19 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
     document.addEventListener('input', (e) => { if (e.target.matches && e.target.matches('.em-search')) { EM.q = e.target.value; renderEm(); } });
     ['keyup', 'click', 'select'].forEach((ev) => document.addEventListener(ev, (e) => { if (e.target.id === 'prompt') EM.caret = e.target.selectionStart; }));
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && EM.open && $('#lb').hidden) emOpen(false); });
+    document.addEventListener('keydown', (e) => {
+        if (!e.target.dataset || !e.target.dataset.pe) return;
+        if (e.key === 'Enter') { e.preventDefault(); peDo(PE.name == null ? 'add' : 'edit'); }
+        if (e.key === 'Escape') { e.preventDefault(); peClose(); }
+    });
 
     // ---------- пресеты: перетаскивание пилюль (порядок сохраняется на Drive, виден и в классическом) ----------
     let suppressClick = false;
     document.addEventListener('pointerdown', (e) => {
-        const pill = e.target.closest && e.target.closest('.pills[data-kind] .pill');
+        const pill = e.target.closest && e.target.closest('.pills[data-kind] .pill:not(.tool)');
         if (!pill || e.button !== 0) return;
         const box = pill.parentElement, kind = box.dataset.kind;
-        const pills = [...box.querySelectorAll('.pill')], from = pills.indexOf(pill);
+        const pills = [...box.querySelectorAll('.pill:not(.tool)')], from = pills.indexOf(pill);
         const x0 = e.clientX, y0 = e.clientY;
         let dragging = false, to = from, after = false;
         const move = (ev) => {

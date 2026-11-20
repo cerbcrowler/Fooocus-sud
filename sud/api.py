@@ -9,6 +9,7 @@
     GET  /sud/api/image/<key>     готовая картинка
     POST /sud/api/translate       {text} → перевод RU→EN (как кнопка RU→EN)
     POST /sud/api/presets/order   {kind: sampling|loras, names: [...]} → новый порядок пресетов (Drive)
+    POST /sud/api/presets         {kind, op: add|update|edit|delete, name, new?, note?, values?} → пресеты (Drive)
     GET  /sud/api/embeddings      эмбеддинги (папки, превью, избранное…), POST {op: fav|neg|used} — изменить
 
 Генерация идёт через ту же очередь, что кнопка Generate (modules.async_worker.async_tasks).
@@ -282,6 +283,20 @@ def _state():
 
 
 # ---------------- маршруты ----------------
+def _preset_values(kind, v):
+    """Значения пресета из нового интерфейса → формат файлов пресетов (как в классическом)."""
+    from sud import presets as P
+    v = v or {}
+    if kind == "sampling":
+        return P.sampling_values(v["sampler"], v["scheduler"], v["cfg"], v["steps"], v["sharpness"])
+    loras = []
+    for l in v.get("loras") or []:
+        if l.get("name") and l["name"] != "None":
+            loras.append({"name": str(l["name"]), "weight": round(float(l.get("weight", 1.0)), 2),
+                          "enabled": bool(l.get("enabled", True))})
+    return {"loras": loras}
+
+
 def _routes(app):
     from fastapi import Request
     from fastapi.responses import FileResponse, JSONResponse, Response, RedirectResponse
@@ -357,6 +372,34 @@ def _routes(app):
         store.reorder([str(n) for n in body.get("names") or []])
         return JSONResponse({"ok": True, "presets": store.load()})
 
+    async def presets_edit(request: Request):
+        from sud import presets as P
+        body = await request.json()
+        kind = body.get("kind")
+        store = {"sampling": P.SAMPLING, "loras": P.LORAS}.get(kind)
+        if store is None:
+            return JSONResponse({"error": "неизвестный вид пресетов"}, status_code=400)
+        op, name = body.get("op"), str(body.get("name") or "")
+        try:
+            values = _preset_values(kind, body.get("values")) if op in ("add", "update") else None
+            if op == "add":
+                err = store.add(name, values, " ".join(str(body.get("note") or "").split()))
+            elif op == "update":
+                err = store.update(name, values)
+            elif op == "edit":
+                err = store.rename(name, body.get("new") or name) if (body.get("new") or name) != name else ""
+                if not err and "note" in body:
+                    err = store.set_note(" ".join(str(body.get("new") or name).split()), body.get("note") or "")
+            elif op == "delete":
+                err = store.delete(name)
+            else:
+                err = "неизвестное действие"
+        except (TypeError, ValueError, KeyError) as e:
+            err = f"плохие значения: {e}"
+        if err:
+            return JSONResponse({"error": err}, status_code=400)
+        return JSONResponse({"ok": True, "presets": store.load()})
+
     async def embeddings(request: Request):
         """GET — список (как панель 🧬 в классическом), POST {op: fav|neg|used, name, on} — изменить."""
         from sud import ui_embeddings as E
@@ -381,6 +424,7 @@ def _routes(app):
     app.add_api_route("/sud/api/image/{key}", image, methods=["GET"])
     app.add_api_route("/sud/api/translate", translate, methods=["POST"])
     app.add_api_route("/sud/api/presets/order", presets_order, methods=["POST"])
+    app.add_api_route("/sud/api/presets", presets_edit, methods=["POST"])
     app.add_api_route("/sud/api/embeddings", embeddings, methods=["GET", "POST"])
     # наши маршруты — первыми, чтобы общие маршруты Gradio их не перехватили
     ours = [r for r in app.router.routes if getattr(r, "path", "").startswith("/sud")]

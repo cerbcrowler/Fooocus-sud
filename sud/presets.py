@@ -30,6 +30,12 @@ class Store:
     def save(self, presets):
         p = self.path()
         os.makedirs(os.path.dirname(p), exist_ok=True)
+        if os.path.isfile(p):   # предыдущая версия — на случай ошибки
+            try:
+                import shutil
+                shutil.copy2(p, p + ".bak")
+            except OSError:
+                pass
         tmp = p + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(presets, f, ensure_ascii=False, indent=2)

@@ -127,6 +127,25 @@ class H(BaseHTTPRequestHandler):
             by = {x["name"]: x for x in STATE[key]}
             STATE[key] = [by.pop(n) for n in body["names"] if n in by] + list(by.values())
             return self._send(200, {"ok": True, "presets": STATE[key]})
+        if p == "/sud/api/presets":
+            key = {"sampling": "sampling_presets", "loras": "lora_presets"}[body["kind"]]
+            L, name, op = STATE[key], body.get("name"), body.get("op")
+            i = next((k for k, x in enumerate(L) if x["name"] == name), -1)
+            if op == "add":
+                if not name or i >= 0:
+                    return self._send(400, {"error": f"Пресет «{name}» уже есть" if name else "Введи название пресета"})
+                L.append({"name": name, "note": body.get("note", ""), **body["values"]})
+            elif i < 0:
+                return self._send(400, {"error": f"Пресета «{name}» нет"})
+            elif op == "update":
+                L[i].update(body["values"])
+            elif op == "edit":
+                L[i]["name"] = body.get("new") or name
+                L[i]["note"] = body.get("note", L[i].get("note", ""))
+            elif op == "delete":
+                del L[i]
+            print("presets:", op, name, body.get("new", ""))
+            return self._send(200, {"ok": True, "presets": L})
         if p == "/sud/api/embeddings":
             it = next((x for x in EMB["items"] if x["name"] == body.get("name")), None)
             if it and body.get("op") == "fav":
