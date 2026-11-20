@@ -1,0 +1,353 @@
+// Fooocus-sud — новый интерфейс, этап 1: экран генерации поверх /sud/api (sud/api.py).
+// Без сборки и библиотек. Состояние интерфейса — localStorage «sud2-ui» (переживает F5 и новые сессии Colab).
+(function () {
+    'use strict';
+    const API = 'api/';
+    const LS = 'sud2-ui', LS_HIST = 'sud2-history';
+    const $ = (s, r = document) => r.querySelector(s);
+    const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const lsGet = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? d; } catch (e) { return d; } };
+    const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* ignore */ } };
+    const rawGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };   // строки классического интерфейса
+    const ICON = {
+        create: '<path d="M16 18a2 2 0 0 1 2 2a2 2 0 0 1 2 -2a2 2 0 0 1 -2 -2a2 2 0 0 1 -2 2zm0 -12a2 2 0 0 1 2 2a2 2 0 0 1 2 -2a2 2 0 0 1 -2 -2a2 2 0 0 1 -2 2zm-7 12a6 6 0 0 1 6 -6a6 6 0 0 1 -6 -6a6 6 0 0 1 -6 6a6 6 0 0 1 6 6z"/>',
+        gallery: '<path d="M15 8h.01"/><path d="M3 6a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v12a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3v-12z"/><path d="M3 16l5 -5c.928 -.893 2.072 -.893 3 0l5 5"/><path d="M14 14l1 -1c.928 -.893 2.072 -.893 3 0l3 3"/>',
+        classic: '<path d="M4 4h6v6h-6z"/><path d="M14 4h6v6h-6z"/><path d="M4 14h6v6h-6z"/><path d="M14 17h6"/><path d="M17 14v6"/>',
+        sun: '<path d="M12 12m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0"/><path d="M3 12h1m8 -9v1m8 8h1m-9 8v1m-6.4 -15.4l.7 .7m12.1 -.7l-.7 .7m0 11.4l.7 .7m-12.1 -.7l-.7 .7"/>',
+        moon: '<path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z"/>',
+        chev: '<path d="M6 9l6 6l6 -6"/>',
+    };
+    const svg = (n) => `<svg class="i" viewBox="0 0 24 24">${ICON[n]}</svg>`;
+
+    // ---------- состояние ----------
+    let SRV = null;                                   // ответ /state
+    let U = Object.assign({                           // выбор пользователя
+        prompt: '', negative: '', showNeg: false, model: null, loras: null, sampler: null, scheduler: null,
+        steps: -1, cfg: 1, sharpness: 2, aspect: null, image_number: 1, output_format: 'png', performance: null,
+        random: true, seed: '', closed: {}, camera: { enabled: false, angle: '', height: '', shot: '', weight: 1.2 },
+    }, lsGet(LS, {}));
+    let history = lsGet(LS_HIST, []);                 // [{key, url, seed, prompt}]
+    let current = null, running = null;
+    const save = () => lsSet(LS, U);
+
+    // ---------- API ----------
+    async function api(path, body) {
+        const r = await fetch(API + path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+        return r.json();
+    }
+
+    // ---------- карточки справа ----------
+    const card = (id, title, sub, body, fold = true) => `<div class="card${fold ? ' fold' : ''}${U.closed[id] ? ' closed' : ''}" data-card="${id}">
+        <div class="ch">${title}${sub ? `<span class="sub">${sub}</span>` : ''}${fold ? `<span class="chev">${svg('chev')}</span>` : ''}</div><div class="body">${body}</div></div>`;
+    const opts = (list, val, label = (x) => x) => list.map((x) => `<option value="${esc(x)}"${x === val ? ' selected' : ''}>${esc(label(x))}</option>`).join('');
+    const short = (n) => String(n).split(/[\\/]/).pop().replace(/\.(safetensors|ckpt|pt|bin)$/i, '');
+    const range = (key, label, min, max, step, val) => `<div class="row"><label>${label}</label><input type="range" data-u="${key}" min="${min}" max="${max}" step="${step}" value="${val}"><output>${val}</output></div>`;
+    const arOf = (label) => { const m = String(label).match(/(\d+)\s*[×x*]\s*(\d+)/); return m ? [+m[1], +m[2]] : [1, 1]; };
+    const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+
+    const CAM_ANGLES = [['front', 'спереди', 90], ['q_right', '¾ вправо', 45], ['right', 'профиль вправо', 0], ['bq_right', 'сзади ¾ вправо', -45],
+        ['back', 'сзади', -90], ['bq_left', 'сзади ¾ влево', -135], ['left', 'профиль влево', 180], ['q_left', '¾ влево', 135]];
+    const CAM_H = [['', '—'], ['top', 'С дрона'], ['high', 'Сверху'], ['above', 'Чуть сверху'], ['eye', 'На уровне глаз'], ['low', 'Снизу'], ['worm', 'С земли'], ['selfie', 'Селфи']];
+    const CAM_S = [['', '—'], ['ecu', 'Глаза крупно'], ['cu', 'Лицо'], ['mcu', 'По плечи'], ['ms', 'По пояс'], ['cowboy', 'По бёдра'], ['full', 'Во весь рост'], ['long', 'Общий план'], ['establishing', 'Издалека'], ['pov', 'От первого лица']];
+    const camLabel = (l, k) => (l.find((x) => x[0] === k) || [])[1];
+    const camOn = () => U.camera.enabled && (U.camera.angle || U.camera.height || U.camera.shot);
+    const camSummary = () => (camOn() ? [camLabel(CAM_ANGLES, U.camera.angle), camLabel(CAM_H, U.camera.height), camLabel(CAM_S, U.camera.shot)].filter((x) => x && x !== '—').join(' · ') : 'выкл');
+
+    function renderRight() {
+        if (!SRV) return;
+        const S = SRV;
+        const startLora = rawGet('sud-pr-loras-start') || (S.lora_presets[0] || {}).name;
+        // Модель
+        let html = card('model', '<b>Модель</b>', '', `<select data-u="model">${opts(S.models, U.model, short)}</select>`, false);
+        // Сэмплинг
+        const sp = S.sampling_presets.map((p) => {
+            const on = p.sampler === U.sampler && p.scheduler === U.scheduler && +p.steps === +U.steps && Math.abs(p.cfg - U.cfg) < 0.01 && Math.abs(p.sharpness - U.sharpness) < 0.01;
+            return `<button class="pill${on ? ' on' : ''}" data-sp="${esc(p.name)}" title="${esc(p.note || '')}">${esc(p.name)}</button>`;
+        }).join('');
+        html += card('sampling', '<b>Сэмплинг</b>', `${U.sampler} · ${U.scheduler} · ${U.steps < 0 ? 'авто' : U.steps}`,
+            `<div class="pills">${sp || '<span class="hint">пресетов нет</span>'}</div>
+             <div class="half"><select data-u="sampler">${opts(S.samplers, U.sampler)}</select><select data-u="scheduler">${opts(S.schedulers, U.scheduler)}</select></div>
+             ${range('steps', 'Шаги', -1, 60, 1, U.steps)}${range('cfg', 'CFG', 1, 15, 0.1, U.cfg)}${range('sharpness', 'Резкость', 0, 30, 1, U.sharpness)}`);
+        // LoRA
+        const lp = S.lora_presets.map((p) => `<button class="pill" data-lp="${esc(p.name)}" title="${esc((p.loras || []).map((l) => short(l.name) + ' ×' + l.weight).join(', '))}">${esc(p.name)}${p.name === startLora ? '<span class="star">★</span>' : ''}</button>`).join('');
+        const rows = U.loras.map(([on, name, w], i) => `<div class="lora"><input type="checkbox" data-lora-on="${i}"${on ? ' checked' : ''}>
+            <select data-lora-name="${i}"><option value="None">—</option>${opts(S.loras, name, (x) => x.replace(/\.safetensors$/i, ''))}</select>
+            <button class="x" data-lora-del="${i}" title="Убрать">✕</button>
+            <div class="w"><input type="range" data-lora-w="${i}" min="${S.lora_min}" max="${S.lora_max}" step="0.1" value="${w}"><output>${(+w).toFixed(1)}</output></div></div>`).join('');
+        html += card('loras', '<b>LoRA</b>', `${U.loras.filter((l) => l[0]).length} из ${S.lora_slots}`,
+            `<div class="pills">${lp}</div>${rows}${U.loras.length < S.lora_slots ? '<button class="add" data-act="lora-add">＋ Добавить LoRA</button>' : ''}`);
+        // Разрешение
+        const ars = S.aspects.map((a) => {
+            const [w, h] = arOf(a), g = gcd(w, h), k = 18 / Math.max(w, h);
+            return `<button class="ar${a === U.aspect ? ' on' : ''}" data-ar="${esc(a)}" title="${w}×${h}"><span class="r" style="width:${Math.round(w * k)}px;height:${Math.round(h * k)}px"></span>${w / g}:${h / g}</button>`;
+        }).join('');
+        const [aw, ah] = arOf(U.aspect);
+        html += card('aspect', '<b>Разрешение</b>', `${aw}×${ah}`, `<div class="ars">${ars}</div>`);
+        // Камера
+        const dots = CAM_ANGLES.map(([k, t, a]) => `<button class="d${U.camera.angle === k ? ' on' : ''}" data-cam-angle="${k}" title="${t}" style="left:${48 + 36 * Math.cos(a * Math.PI / 180)}px;top:${48 + 36 * Math.sin(a * Math.PI / 180)}px"></button>`).join('');
+        html += card('camera', '<b>Камера</b>', camSummary(),
+            `<div class="cam"><div class="dial"><div class="ring"></div><button class="who${U.camera.angle ? '' : ' on'}" data-cam-angle="" title="Ракурс не задан"></button>${dots}</div>
+             <div><select data-cam="height">${CAM_H.map(([k, t]) => `<option value="${k}"${U.camera.height === k ? ' selected' : ''}>Высота: ${t}</option>`).join('')}</select>
+             <select data-cam="shot" style="margin-top:6px">${CAM_S.map(([k, t]) => `<option value="${k}"${U.camera.shot === k ? ' selected' : ''}>План: ${t}</option>`).join('')}</select>
+             <div class="row"><label style="width:auto">Сила</label><input type="range" data-cam="weight" min="0.5" max="2" step="0.1" value="${U.camera.weight}"><output>${(+U.camera.weight).toFixed(1)}</output></div></div></div>
+             <label class="row" style="gap:6px"><input type="checkbox" data-cam="enabled"${U.camera.enabled ? ' checked' : ''}> <span class="hint">включена — слова о ракурсе добавятся в конец промпта</span></label>`);
+        // Ещё
+        html += card('more', '<b>Ещё</b>', `×${U.image_number} · ${U.random ? 'seed случайный' : 'seed ' + U.seed}`,
+            `${range('image_number', 'Картинок', 1, S.max_images, 1, U.image_number)}
+             <div class="row"><label>Seed</label><input type="checkbox" data-u="random"${U.random ? ' checked' : ''} title="Случайный"><input type="text" data-u="seed" value="${esc(U.seed)}" placeholder="случайный"${U.random ? ' disabled' : ''}></div>
+             <div class="row"><label>Формат</label><select data-u="output_format">${opts(S.output_formats, U.output_format)}</select></div>
+             <div class="row"><label>Performance</label><select data-u="performance">${opts(S.performances, U.performance)}</select></div>`);
+        $('#right').innerHTML = html;
+        updateGenButton();
+        $('#chip-cam').textContent = 'Камера · ' + camSummary();
+        $('#chip-cam').classList.toggle('on', !!camOn());
+    }
+
+    // ---------- автосохранение на ноут (та же папка, что у javascript/sud-autosave.js: IndexedDB «sud-autosave») ----------
+    const SAVE = { dir: null, enabled: true, perm: 'none', count: 0 };
+    const idb = () => new Promise((res, rej) => { const r = indexedDB.open('sud-autosave', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+    const kv = async (k, v) => {
+        const db = await idb();
+        return new Promise((res) => {
+            const t = db.transaction('kv', v === undefined ? 'readonly' : 'readwrite'), st = t.objectStore('kv');
+            if (v === undefined) { const r = st.get(k); r.onsuccess = () => res(r.result); r.onerror = () => res(undefined); }
+            else { st.put(v, k); t.oncomplete = () => res(); t.onerror = () => res(); }
+        });
+    };
+    function renderSave() {
+        const b = $('#st-save');
+        if (!('showDirectoryPicker' in window)) { b.textContent = '💾 нет (нужен Chrome/Edge)'; b.className = 'st save bad'; return; }
+        if (!SAVE.dir) { b.textContent = '💾 выбрать папку'; b.className = 'st save bad'; return; }
+        if (!SAVE.enabled) { b.textContent = '💾 выкл'; b.className = 'st save'; return; }
+        if (SAVE.perm !== 'granted') { b.textContent = '💾 нажми — разрешить запись'; b.className = 'st save warn'; return; }
+        b.textContent = `💾 ${SAVE.dir.name}${SAVE.count ? ' · ' + SAVE.count : ''}`; b.className = 'st save ok';
+    }
+    async function initSave() {
+        try {
+            SAVE.dir = (await kv('dir')) || null;
+            const en = await kv('enabled'); SAVE.enabled = en === undefined ? true : !!en;
+            if (SAVE.dir) SAVE.perm = await SAVE.dir.queryPermission({ mode: 'readwrite' });
+        } catch (e) { /* без папки */ }
+        renderSave();
+    }
+    async function onSaveButton() {
+        if (!('showDirectoryPicker' in window)) return;
+        try {
+            if (SAVE.dir && SAVE.perm !== 'granted') {
+                SAVE.perm = await SAVE.dir.requestPermission({ mode: 'readwrite' });
+            } else if (!SAVE.dir || confirm(`Автосохранение в «${SAVE.dir.name}».
+OK — выбрать другую папку, Отмена — ${SAVE.enabled ? 'выключить' : 'включить'}`)) {
+                const h = await window.showDirectoryPicker({ id: 'sud-autosave', mode: 'readwrite', startIn: 'pictures' });
+                SAVE.dir = h; SAVE.perm = await h.requestPermission({ mode: 'readwrite' }); SAVE.enabled = true;
+                await kv('dir', h); await kv('enabled', true);
+            } else { SAVE.enabled = !SAVE.enabled; await kv('enabled', SAVE.enabled); }
+        } catch (e) { /* отменил выбор */ }
+        renderSave();
+    }
+    async function saveToLaptop(items) {
+        if (!SAVE.dir || !SAVE.enabled || SAVE.perm !== 'granted') return;
+        for (const it of items) {
+            if (!it.name) continue;
+            try {
+                try { await SAVE.dir.getFileHandle(it.name); continue; } catch (e) { /* файла нет — пишем */ }
+                const blob = await (await fetch(it.url)).blob();
+                const fh = await SAVE.dir.getFileHandle(it.name, { create: true });
+                const w = await fh.createWritable(); await w.write(blob); await w.close();
+                SAVE.count++;
+            } catch (e) { if (e.name === 'NotAllowedError') SAVE.perm = 'prompt'; console.warn('[autosave]', it.name, e); }
+        }
+        renderSave();
+    }
+
+    // ---------- генерация ----------
+    function updateGenButton() {
+        const n = +U.image_number || 1;
+        const eta = SRV && SRV.sec_per_image ? ` · ~${Math.round(SRV.sec_per_image * n)} с` : '';
+        $('#gen-sub').textContent = `×${n}${eta}`;
+    }
+    async function generate() {
+        if (running) return;
+        const payload = {
+            prompt: $('#prompt').value, negative: $('#negative').value, model: U.model, loras: U.loras,
+            sampler: U.sampler, scheduler: U.scheduler, steps: +U.steps, cfg: +U.cfg, sharpness: +U.sharpness,
+            aspect: U.aspect, image_number: +U.image_number, output_format: U.output_format, performance: U.performance,
+            seed: U.random ? null : U.seed, camera: U.camera,
+        };
+        $('#btn-gen').disabled = true;
+        try {
+            const r = await api('generate', payload);
+            running = { id: r.id, seed: r.seed, prompt: payload.prompt };
+            if (!U.random) { U.seed = String(r.seed); save(); }
+            $('#btn-stop').hidden = false;
+            setProgress(0, 'В очереди…');
+            poll();
+        } catch (e) { alert('Не получилось начать: ' + e.message); $('#btn-gen').disabled = false; }
+    }
+    async function poll() {
+        if (!running) return;
+        try {
+            const r = await api('task/' + running.id);
+            setProgress(r.percent, r.title);
+            if (r.preview) showImage(r.preview, null);
+            if (r.done) {
+                const items = r.images.map((k, i) => ({ key: k, url: API + 'image/' + k, name: (r.names || [])[i], seed: r.seed, prompt: running.prompt }));
+                saveToLaptop(items);
+                history = items.concat(history).slice(0, 60);
+                lsSet(LS_HIST, history);
+                running = null;
+                $('#btn-stop').hidden = true; $('#btn-gen').disabled = false;
+                setProgress(null);
+                if (items[0]) select(items[0]);
+                renderStrip(); refreshState();
+                return;
+            }
+        } catch (e) { setProgress(null, ''); }
+        setTimeout(poll, 400);
+    }
+    function setProgress(pct, title) {
+        const p = $('#progress');
+        p.classList.toggle('on', pct !== null);
+        if (pct !== null) { $('#progress-bar').style.width = pct + '%'; $('#progress-text').textContent = `${title || ''} ${pct}%`; }
+    }
+    function showImage(src, item) {
+        $('#viewer').classList.add('has');
+        $('#viewer-img').src = src;
+        $('#dl').href = item ? item.url : src;
+        $('#dl').style.display = item ? '' : 'none';
+    }
+    function select(item) { current = item; showImage(item.url, item); renderStrip(); }
+    function renderStrip() {
+        $('#strip').innerHTML = history.slice(0, 30).map((h, i) => `<img src="${h.url}" data-h="${i}" class="${current && current.key === h.key ? 'on' : ''}" title="seed ${h.seed}" loading="lazy">`).join('');
+        $('#gallery').innerHTML = history.map((h, i) => `<img src="${h.url}" data-h="${i}" title="seed ${h.seed}\n${esc(h.prompt)}" loading="lazy">`).join('') || '<div class="hint">Пока пусто</div>';
+    }
+
+    // ---------- события ----------
+    document.addEventListener('click', async (e) => {
+        const t = e.target.closest('button, img[data-h], .ch, a');
+        if (!t) return;
+        if (t.matches('.ch') && t.parentElement.classList.contains('fold')) {
+            const id = t.parentElement.dataset.card; U.closed[id] = !U.closed[id]; save(); t.parentElement.classList.toggle('closed'); return;
+        }
+        if (t.dataset.h !== undefined) { select(history[+t.dataset.h]); if (!$('#v-gallery').hidden) switchView('create'); return; }
+        if (t.dataset.view) { switchView(t.dataset.view); return; }
+        if (t.dataset.sp) {
+            const p = SRV.sampling_presets.find((x) => x.name === t.dataset.sp);
+            Object.assign(U, { sampler: p.sampler, scheduler: p.scheduler, steps: p.steps, cfg: p.cfg, sharpness: p.sharpness });
+            save(); renderRight(); return;
+        }
+        if (t.dataset.lp) {
+            const p = SRV.lora_presets.find((x) => x.name === t.dataset.lp);
+            U.loras = (p.loras || []).filter((l) => SRV.loras.includes(l.name)).slice(0, SRV.lora_slots).map((l) => [l.enabled !== false, l.name, l.weight]);
+            save(); renderRight(); return;
+        }
+        if (t.dataset.ar) { U.aspect = t.dataset.ar; save(); renderRight(); return; }
+        if (t.dataset.loraDel !== undefined) { U.loras.splice(+t.dataset.loraDel, 1); save(); renderRight(); return; }
+        if (t.dataset.act === 'lora-add') { U.loras.push([true, 'None', 1]); save(); renderRight(); return; }
+        if (t.dataset.camAngle !== undefined) { U.camera.angle = U.camera.angle === t.dataset.camAngle ? '' : t.dataset.camAngle; U.camera.enabled = !!(U.camera.angle || U.camera.height || U.camera.shot); save(); renderRight(); return; }
+        if (t.dataset.act === 'reuse-seed' && current) { U.random = false; U.seed = String(current.seed); save(); renderRight(); return; }
+        if (t.id === 'btn-gen') { generate(); return; }
+        if (t.id === 'st-save') { onSaveButton(); return; }
+        if (t.id === 'btn-stop' && running) { api('task/' + running.id + '/stop', {}); return; }
+        if (t.id === 'chip-neg') { U.showNeg = !U.showNeg; save(); $('#neg-row').hidden = !U.showNeg; t.classList.toggle('on', U.showNeg); return; }
+        if (t.id === 'chip-cam') { U.closed.camera = false; save(); renderRight(); $('[data-card="camera"]').scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+        if (t.id === 'chip-tr') {
+            const ta = $('#prompt'); if (!ta.value.trim()) return;
+            t.classList.add('busy');
+            try { const r = await api('translate', { text: ta.value }); if (r.text) { ta.value = r.text; U.prompt = r.text; save(); } }
+            catch (er) { alert('Перевод не удался: ' + er.message); }
+            t.classList.remove('busy'); return;
+        }
+        if (t.id === 'btn-theme') {
+            const now = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+            document.documentElement.dataset.theme = now; try { localStorage.setItem('sud-theme', now); } catch (er) { /* */ }
+            t.innerHTML = svg(now === 'light' ? 'moon' : 'sun');
+        }
+    });
+    document.addEventListener('input', (e) => {
+        const t = e.target;
+        if (t.id === 'prompt') { U.prompt = t.value; save(); return; }
+        if (t.id === 'negative') { U.negative = t.value; save(); return; }
+        if (t.dataset.u && t.type === 'range') { U[t.dataset.u] = +t.value; t.nextElementSibling.textContent = t.value; save(); if (t.dataset.u === 'image_number') updateGenButton(); return; }
+        if (t.dataset.loraW !== undefined) { U.loras[+t.dataset.loraW][2] = +t.value; t.nextElementSibling.textContent = (+t.value).toFixed(1); save(); return; }
+        if (t.dataset.cam === 'weight') { U.camera.weight = +t.value; t.nextElementSibling.textContent = (+t.value).toFixed(1); save(); return; }
+        if (t.dataset.u === 'seed') { U.seed = t.value; save(); }
+    });
+    document.addEventListener('change', (e) => {
+        const t = e.target;
+        if (t.dataset.u && (t.tagName === 'SELECT')) { U[t.dataset.u] = t.value; save(); renderRight(); return; }
+        if (t.dataset.u === 'random') { U.random = t.checked; save(); renderRight(); return; }
+        if (t.dataset.loraOn !== undefined) { U.loras[+t.dataset.loraOn][0] = t.checked; save(); renderRight(); return; }
+        if (t.dataset.loraName !== undefined) { U.loras[+t.dataset.loraName][1] = t.value; save(); renderRight(); return; }
+        if (t.dataset.cam && t.tagName === 'SELECT') { U.camera[t.dataset.cam] = t.value; U.camera.enabled = !!(U.camera.angle || U.camera.height || U.camera.shot); save(); renderRight(); return; }
+        if (t.dataset.cam === 'enabled') { U.camera.enabled = t.checked; save(); renderRight(); }
+        if (t.matches('input[type=range]')) renderRight();   // обновить подписи карточек
+    });
+    // колёсико на ползунках (как в классическом: LoRA и CFG по 0.1, резкость по 1)
+    // крутит, только если курсор задержался на ползунке (~250 мс) — иначе это прокрутка панели
+    let hoverEl = null, hoverSince = 0, lastWheel = 0;
+    document.addEventListener('pointerover', (e) => {
+        const r = e.target.closest && e.target.closest('input[type=range]');
+        if (r !== hoverEl) { hoverEl = r; hoverSince = performance.now(); }
+    });
+    document.addEventListener('wheel', (e) => {
+        const r = e.target.closest && e.target.closest('input[type=range]');
+        if (!r) return;
+        const now = performance.now();
+        if (r !== hoverEl || (now - hoverSince < 250 && now - lastWheel > 400)) return;
+        lastWheel = now;
+        e.preventDefault();
+        const step = parseFloat(r.step) || 1, dir = e.deltaY < 0 ? 1 : -1;
+        const v = Math.min(+r.max, Math.max(+r.min, Math.round((+r.value + dir * step) / step) * step));
+        r.value = String(+v.toFixed(3));
+        r.dispatchEvent(new Event('input', { bubbles: true }));
+    }, { passive: false });
+    document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); generate(); }
+    });
+    $('#viewer-img').addEventListener('error', () => { if (current) { history = history.filter((h) => h.key !== current.key); lsSet(LS_HIST, history); renderStrip(); } });
+
+    function switchView(v) {
+        document.querySelectorAll('.nv[data-view]').forEach((b) => b.classList.toggle('on', b.dataset.view === v));
+        $('#v-create').hidden = v !== 'create'; $('#v-gallery').hidden = v !== 'gallery';
+    }
+
+    // ---------- запуск ----------
+    async function refreshState() {
+        try {
+            SRV = await api('state');
+            const st = $('#st-conn'); st.className = 'st ok'; st.lastElementChild.textContent = 'движок подключён';
+            $('#st-queue').textContent = SRV.busy || SRV.queue ? `очередь: ${SRV.queue}` : '';
+            return true;
+        } catch (e) {
+            const st = $('#st-conn'); st.className = 'st bad'; st.lastElementChild.textContent = 'движок недоступен — Colab запущен?';
+            return false;
+        }
+    }
+    async function boot() {
+        document.querySelectorAll('.nv').forEach((b) => { b.innerHTML = svg(b.dataset.icon || b.dataset.view); });
+        $('#btn-theme').innerHTML = svg(document.documentElement.dataset.theme === 'light' ? 'moon' : 'sun');
+        $('#prompt').value = U.prompt; $('#negative').value = U.negative;
+        $('#neg-row').hidden = !U.showNeg; $('#chip-neg').classList.toggle('on', U.showNeg);
+        renderStrip();
+        if (history[0]) select(history[0]);
+        initSave();
+        while (!(await refreshState())) await new Promise((r) => setTimeout(r, 4000));
+        const D = SRV.defaults;
+        // то, чего нет на сервере (модель удалили и т.п.), — на значения по умолчанию
+        if (!SRV.models.includes(U.model)) U.model = D.model;
+        if (!U.sampler || !SRV.samplers.includes(U.sampler)) U.sampler = D.sampler;
+        if (!U.scheduler || !SRV.schedulers.includes(U.scheduler)) U.scheduler = D.scheduler;
+        if (!SRV.aspects.includes(U.aspect)) U.aspect = D.aspect;
+        if (!SRV.performances.includes(U.performance)) U.performance = D.performance;
+        if (!SRV.output_formats.includes(U.output_format)) U.output_format = D.output_format;
+        if (!U.loras) {   // первый запуск — пресет ★ (как в классическом) или LoRA по умолчанию
+            const star = rawGet('sud-pr-loras-start'), p = SRV.lora_presets.find((x) => x.name === star) || SRV.lora_presets[0];
+            U.loras = p ? p.loras.map((l) => [l.enabled !== false, l.name, l.weight]) : D.loras;
+            if (U.steps === -1 && D.steps) Object.assign(U, { steps: D.steps, cfg: D.cfg, sharpness: D.sharpness });
+        }
+        save(); renderRight();
+        setInterval(refreshState, 15000);
+    }
+    boot();
+})();

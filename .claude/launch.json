@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "sud-webui2-mock",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["sud/webui2/mock_server.py", "7899"],
+      "port": 7899
+    }
+  ]
+}

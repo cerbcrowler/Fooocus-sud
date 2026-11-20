@@ -1166,6 +1166,15 @@ def dump_default_english_config():
 
 # dump_default_english_config()
 
+# Fooocus-sud: новый интерфейс /sud/ и его API (sud/api.py) — в том же сервере, что и Gradio
+import sud.api
+sud.api.install(ctrls, dict(
+    prompt=prompt, negative_prompt=negative_prompt, performance=performance_selection,
+    aspect=aspect_ratios_selection, image_number=image_number, output_format=output_format, seed=image_seed,
+    sharpness=sharpness, cfg=guidance_scale, base_model=base_model, sampler=sampler_name,
+    scheduler=scheduler_name, steps=overwrite_step, composition=sud_composition, camera=sud_camera,
+    styles=style_selections, loras=lora_ctrls))
+
 shared.gradio_root.launch(
     inbrowser=args_manager.args.in_browser,
     server_name=args_manager.args.listen,

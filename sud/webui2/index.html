@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fooocus-sud</title>
+<link rel="stylesheet" href="static/app.css">
+<script>
+  // тема до отрисовки, чтобы не мигало: та же настройка, что у классического интерфейса
+  try {
+    let t = localStorage.getItem('sud-theme');
+    if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    document.documentElement.dataset.theme = t;
+  } catch (e) {}
+</script>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <span class="logo">Fooocus-sud</span>
+    <span class="dim">новый интерфейс · этап 1</span>
+    <span class="sp"></span>
+    <span class="st" id="st-conn"><span class="dot"></span><span>подключаюсь…</span></span>
+    <span class="st" id="st-queue"></span>
+    <button class="st save" id="st-save" title="Автосохранение на ноут (та же папка, что в классическом интерфейсе)">💾 …</button>
+    <button class="ic" id="btn-theme" title="Светлая / тёмная тема"></button>
+  </header>
+  <div class="main">
+    <nav class="nav">
+      <button class="nv on" data-view="create" title="Создать"></button>
+      <button class="nv" data-view="gallery" title="Галерея"></button>
+      <a class="nv" href="/" title="Классический интерфейс (Inpaint, Enhance, позы, менеджер)" data-icon="classic"></a>
+    </nav>
+    <section class="center" id="v-create">
+      <div class="view" id="viewer">
+        <div class="empty" id="viewer-empty">Здесь появится картинка.<br><small>Ctrl+Enter — создать</small></div>
+        <img id="viewer-img" alt="">
+        <div class="tools" id="viewer-tools">
+          <button class="tb" data-act="reuse-seed" title="Вернуть seed этой картинки">seed</button>
+          <a class="tb" id="dl" download title="Скачать">⬇</a>
+        </div>
+        <div class="progress" id="progress"><div class="bar"><b id="progress-bar"></b></div><span id="progress-text"></span></div>
+      </div>
+      <div class="strip" id="strip"></div>
+      <div class="prompt">
+        <textarea id="prompt" rows="3" placeholder="Что нарисовать? Можно по-русски — кнопка RU→EN или автоперевод"></textarea>
+        <div class="neg" id="neg-row" hidden><textarea id="negative" rows="2" placeholder="Чего не должно быть (негативный промпт)"></textarea></div>
+        <div class="prow">
+          <button class="chip" id="chip-tr" title="Перевести промпт на английский (DeepL / Google)">RU→EN</button>
+          <button class="chip" id="chip-neg">− негатив</button>
+          <button class="chip" id="chip-cam" title="Карточка «Камера» справа"></button>
+          <span class="sp"></span>
+          <button class="stop" id="btn-stop" hidden>Стоп</button>
+          <button class="gen" id="btn-gen">Создать <small id="gen-sub"></small></button>
+        </div>
+      </div>
+    </section>
+    <section class="center" id="v-gallery" hidden>
+      <div class="gallery" id="gallery"></div>
+    </section>
+    <aside class="right" id="right"></aside>
+  </div>
+</div>
+<script src="static/app.js"></script>
+</body>
+</html>
