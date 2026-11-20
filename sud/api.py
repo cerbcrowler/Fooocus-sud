@@ -97,6 +97,7 @@ def _build_args(p):
 ACTIONS = {
     "upscale_tiled": ("uov", "Upscale (Tiled Detail 2x)"),
     "upscale": ("uov", "Upscale (2x)"),
+    "upscale_15": ("uov", "Upscale (1.5x)"),
     "vary_subtle": ("uov", "Vary (Subtle)"),
     "vary_strong": ("uov", "Vary (Strong)"),
     "faces": ("enhance", None),

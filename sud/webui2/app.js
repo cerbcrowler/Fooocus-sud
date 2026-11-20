@@ -524,7 +524,7 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
     function lbShow(src, i) {
         LB.i = i; LB.src = src;
         const it = i >= 0 ? history[i] : null;
-        const ACT = { upscale_tiled: '2× Tiled', upscale: '2×', vary_subtle: 'вариация', vary_strong: 'сильная вариация', faces: 'лица' };
+        const ACT = { upscale_tiled: '2× Tiled', upscale: '2×', upscale_15: '1.5×', vary_subtle: 'вариация', vary_strong: 'сильная вариация', faces: 'лица' };
         $('#lb-info').textContent = it ? `${i + 1} / ${history.length} · seed ${it.seed}${it.action ? ' · ' + ACT[it.action] : ''} · ${it.prompt || ''}` : 'превью';
         $('#lb-dl').href = it ? it.url : src; $('#lb-dl').style.display = it ? '' : 'none';
         lb.querySelectorAll('.lb-nav').forEach((b) => { b.hidden = i < 0 || history.length < 2; });
