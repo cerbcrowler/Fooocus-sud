@@ -862,6 +862,10 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
               <div class="srow"><span>Максимум картинок за раз${rs('default_max_image_number')}</span><input type="number" min="1" max="64" data-set-n="default_max_image_number" value="${V.default_max_image_number}"></div>
               <div class="sneg"><span>Негатив по умолчанию <small>(для классического и новых сессий)</small></span><textarea rows="2" data-set-t="default_prompt_negative">${esc(V.default_prompt_negative || '')}</textarea></div>
             </div></div>
+            <div class="card"><div class="ch"><b>Fooocus</b></div><div class="body">
+              <div class="srow"><span>Перезапустить Fooocus<small>подхватятся настройки со значком ↻; ~1 мин, картинки в ленте останутся, но кнопки у старых картинок перестанут работать</small></span>
+              <button class="btn-s${ST.needRestart ? ' acc' : ''}${ST.sure ? ' sure' : ''}" data-restart>${ST.sure ? 'Точно перезапустить?' : '↻ Перезапустить'}</button></div>
+            </div></div>
             <div class="smsg">${esc(ST.msg)}</div>
           </div></div>`;
     }
@@ -870,7 +874,8 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
             const r = await api('settings', { values });
             const keepLog = ST.data.log;
             ST.data = r; ST.data.log = r.log || keepLog;
-            ST.msg = r.restart && r.restart.length ? '✓ Сохранено. ↻ Часть настроек заработает после перезапуска Fooocus.' : '✓ Сохранено';
+            if (r.restart && r.restart.length) ST.needRestart = true;
+            ST.msg = r.restart && r.restart.length ? '✓ Сохранено. ↻ Часть настроек заработает после перезапуска Fooocus — кнопка ниже.' : '✓ Сохранено';
             if ('sud_notify_sound' in values) SRV.notify_sound = values.sud_notify_sound;
             flash('Сохранено');
         } catch (e) { ST.msg = '⚠️ ' + e.message; }
@@ -890,6 +895,10 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
     document.addEventListener('click', async (e) => {
         const t = e.target.closest && e.target.closest('#sett button');
         if (!t) return;
+        if (t.dataset.restart !== undefined) {
+            if (!ST.sure) { ST.sure = true; settRender(); setTimeout(() => { ST.sure = false; if (!$('#v-settings').hidden) settRender(); }, 4000); return; }
+            ST.sure = false; restartFooocus(); return;
+        }
         if (t.dataset.setEngine) settSave({ sud_translate_engine: t.dataset.setEngine });
         else if (t.dataset.chime !== undefined) chime();
         else if (t.dataset.theme) settRender();
@@ -899,6 +908,24 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
             catch (er) { ST.msg = '⚠️ ' + er.message; settRender(); }
         }
     });
+
+    async function restartFooocus(force) {
+        try { await api('restart', force ? { force: true } : {}); }
+        catch (e) {
+            if (/генерация/.test(e.message) && confirm('Сейчас идёт генерация. Перезапустить всё равно? Она прервётся.')) return restartFooocus(true);
+            ST.msg = '⚠️ ' + e.message; settRender(); return;
+        }
+        ST.msg = '↻ Fooocus перезапускается… страница обновится сама (обычно ~1 мин)'; settRender();
+        setProgress(0, 'Перезапуск Fooocus…');
+        let down = false; const t0 = Date.now();
+        const tick = async () => {
+            if (Date.now() - t0 > 300000) { ST.msg = '⚠️ Fooocus долго не поднимается — загляни в Colab'; settRender(); return; }
+            try { const r = await fetch(API + 'state', { cache: 'no-store' }); if (r.ok && down) { location.reload(); return; } if (!r.ok) down = true; }
+            catch (e) { down = true; }
+            setTimeout(tick, 2500);
+        };
+        setTimeout(tick, 3000);
+    }
 
     // ---------- 🔔 звук по окончании (как javascript/sud-notify.js классического) ----------
     let actx = null;

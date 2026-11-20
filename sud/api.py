@@ -14,6 +14,7 @@
     POST /sud/api/pose            {op: detect, key} → позы с фото (DWPose); {op: render, poses, w, h} → {key} скелета
     GET  /sud/api/settings        ⚙️ настройки (как вкладка классического) + группы моделей для предзагрузки
     POST /sud/api/settings        {values: {...}} — сохранить (sud/settings.py → Drive, config.txt)
+    POST /sud/api/restart         перезапустить Fooocus (/content/restart_fooocus.sh, как кнопка в ⚙️ классического)
     POST /sud/api/prefetch        {groups: [...]} — скачать эти модели сейчас, в фоне (sud/prefetch.py)
     GET  /sud/api/embeddings      эмбеддинги (папки, превью, избранное…), POST {op: fav|neg|used} — изменить
 
@@ -592,6 +593,19 @@ def _routes(app):
             return JSONResponse({"error": str(e)}, status_code=400)
         return JSONResponse(dict(_settings_view(), saved=True, restart=restart))
 
+    async def restart(request: Request):
+        import subprocess
+        body = await request.json()
+        script, log = "/content/restart_fooocus.sh", "/content/restart.log"
+        if not os.path.exists(script):
+            return JSONResponse({"error": "скрипт перезапуска есть только в Colab — перезапусти Fooocus вручную"}, status_code=400)
+        if any(not r["done"] for r in _tasks.values()) and not body.get("force"):
+            return JSONResponse({"error": "идёт генерация — дождись конца или останови её", "busy": True}, status_code=409)
+        print("[sud api] перезапуск Fooocus из нового интерфейса")
+        subprocess.Popen(f"sleep 2; bash {script} > {log} 2>&1", shell=True, start_new_session=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return JSONResponse({"ok": True})
+
     async def prefetch(request: Request):
         import subprocess
         import sys
@@ -715,6 +729,7 @@ def _routes(app):
     app.add_api_route("/sud/api/settings", settings_get, methods=["GET"])
     app.add_api_route("/sud/api/settings", settings_post, methods=["POST"])
     app.add_api_route("/sud/api/prefetch", prefetch, methods=["POST"])
+    app.add_api_route("/sud/api/restart", restart, methods=["POST"])
     app.add_api_route("/sud/api/translate", translate, methods=["POST"])
     app.add_api_route("/sud/api/presets/order", presets_order, methods=["POST"])
     app.add_api_route("/sud/api/presets", presets_edit, methods=["POST"])

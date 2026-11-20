@@ -167,6 +167,8 @@ class H(BaseHTTPRequestHandler):
             SETT["values"].update(body.get("values") or {})
             print("settings:", body.get("values"))
             return self._send(200, dict(SETT, saved=True, restart=[k for k in body.get("values") or {} if k in SETT["restart_keys"]]))
+        if p == "/sud/api/restart":
+            return self._send(200, {"ok": True})
         if p == "/sud/api/prefetch":
             SETT["prefetch_running"] = True
             return self._send(200, {"ok": True})
