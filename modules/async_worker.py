@@ -384,6 +384,7 @@ def worker():
                      denoising_strength, final_scheduler_name, goals, initial_latent, steps, switch, positive_cond,
                      negative_cond, task, loras, tiled, use_expansion, width, height, base_progress, preparation_steps,
                      total_count, show_intermediate_results, persist_image=True):
+        task_start = time.perf_counter()  # Fooocus-sud: время для плашки
         if async_task.last_stop is not False:
             ldm_patched.modules.model_management.interrupt_current_processing()
         if isinstance(initial_latent, dict) and tiled_upscale.TILED_DETAIL_LATENT_KEY in initial_latent:
@@ -406,7 +407,17 @@ def worker():
             progressbar(async_task, current_progress, 'Checking for NSFW content ...')
             imgs = default_censor(imgs)
         progressbar(async_task, current_progress, f'Saving image {current_task_id + 1}/{total_count} to system ...')
-        img_paths = save_and_log(async_task, height, imgs, task, use_expansion, width, loras, persist_image)
+        imgs_to_save = imgs
+        try:  # Fooocus-sud: 🏷 плашка с параметрами — только на сохраняемой копии
+            from sud import plate
+            if plate.enabled():
+                lines = plate.lines_for(async_task.sampler_name, final_scheduler_name, steps, float(async_task.cfg_scale),
+                                        task['task_seed'], async_task.base_model_name, loras, width, height,
+                                        time.perf_counter() - task_start)
+                imgs_to_save = [plate.draw(x, lines) for x in imgs]
+        except Exception as e:
+            print(f'[Plate] Не получилось нарисовать плашку: {e}')
+        img_paths = save_and_log(async_task, height, imgs_to_save, task, use_expansion, width, loras, persist_image)
         yield_result(async_task, img_paths, current_progress, async_task.black_out_nsfw, False,
                      do_not_show_finished_images=not show_intermediate_results or async_task.disable_intermediate_results)
 

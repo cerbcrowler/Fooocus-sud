@@ -125,6 +125,8 @@ def build():
             f["sud_notify_sound"] = gr.Checkbox(label="🔔 Звук, когда вся очередь генерации закончилась",
                                                 value=bool(cfg.get("sud_notify_sound", True)))
             gr.HTML('<button type="button" class="sud-notify-test sud-sp-btn">▶ Прослушать</button>')
+        f["sud_info_plate"] = gr.Checkbox(label="🏷 Плашка с параметрами на готовых картинках (сэмплер, шаги, seed, модель, LoRA, время) — для тестов",
+                                          value=bool(cfg.get("sud_info_plate", False)))
 
     with gr.Accordion("Перевод промпта RU → EN", open=False):
         f["sud_translate_engine"] = gr.Radio(list(TR_ENGINES), label="Чем переводить",
@@ -245,6 +247,7 @@ def _validate_and_convert(d):
     d["sud_translate_engine"] = TR_ENGINES.get(d.get("sud_translate_engine"), "deepl")
     d["sud_auto_translate"] = bool(d.get("sud_auto_translate"))
     d["sud_notify_sound"] = bool(d.get("sud_notify_sound"))
+    d["sud_info_plate"] = bool(d.get("sud_info_plate"))
     d[P.SETTINGS_KEY] = _labels_to_groups(d.get(P.SETTINGS_KEY))
     d["default_max_lora_number"] = int(d["default_max_lora_number"])
     d["default_max_image_number"] = int(d["default_max_image_number"])
