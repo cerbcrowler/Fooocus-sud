@@ -248,7 +248,7 @@
 // уже ~250 мс стоит над ползунком (или колесо уже крутили над ним только что).
 (function () {
     const HOLD_MS = 250;
-    let hoverEl = null, hoverSince = 0, lastWheel = 0;
+    let hoverEl = null, hoverSince = 0, lastWheel = 0, acc = 0, accEl = null;
 
     document.addEventListener('pointerover', (e) => {
         const r = e.target.closest && e.target.closest('input[type=range]');
@@ -270,9 +270,15 @@
         if (e.shiftKey) step *= 10;
         else if ((e.ctrlKey || e.altKey) && step / 10 >= 0.001) step /= 10;
         const min = parseFloat(r.min || '0'), max = parseFloat(r.max || '100');
-        const dir = (e.deltaY || e.deltaX) < 0 ? 1 : -1;
+        // один щелчок колеса ≈ 100 px (в строках — ×33); тачпад шлёт мелкие порции — копим
+        const px = (e.deltaY || e.deltaX) * (e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? 400 : 1);
+        if (r !== accEl) { accEl = r; acc = 0; }
+        acc += px;
+        const ticks = Math.trunc(acc / 100);
+        if (!ticks) return;
+        acc -= ticks * 100;
         const prec = Math.max(decimals(r.step || 1), decimals(step));
-        let v = Math.round((parseFloat(r.value) + dir * step) * 10 ** prec) / 10 ** prec;
+        let v = Math.round((parseFloat(r.value) - ticks * step) * 10 ** prec) / 10 ** prec;
         v = Math.min(max, Math.max(min, v));
         if (String(v) === r.value) return;
         r.value = String(v);
