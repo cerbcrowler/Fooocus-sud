@@ -470,14 +470,14 @@ body.sud-drag-active, body.sud-drag-active * { user-select: none !important; cur
 #positive_prompt textarea, #negative_prompt textarea { padding-bottom: 30px !important; }
 
 /* ================= панель 🧬 эмбеддингов (javascript/sud-embeddings.js) ================= */
-.sud-em-btn, .sud-cmp-btn {
+.sud-em-btn, .sud-cmp-btn, .sud-pose-btn {
   display: inline-flex; align-items: center; gap: 4px;
   height: 24px; padding: 0 8px; border-radius: 7px;
   border: 1px solid var(--sud-line); background: var(--background-fill-secondary);
   color: var(--body-text-color-subdued); font-size: 11.5px; cursor: pointer; opacity: 0.75;
 }
-.sud-em-btn .sud-ico, .sud-cmp-btn .sud-ico { width: 14px; height: 14px; }
-.sud-em-btn:hover, .sud-em-btn.on, .sud-cmp-btn:hover, .sud-cmp-btn.on { opacity: 1; color: var(--sud-accent); border-color: var(--sud-accent); }
+.sud-em-btn .sud-ico, .sud-cmp-btn .sud-ico, .sud-pose-btn .sud-ico { width: 14px; height: 14px; }
+.sud-em-btn:hover, .sud-em-btn.on, .sud-cmp-btn:hover, .sud-cmp-btn.on, .sud-pose-btn:hover, .sud-pose-btn.on { opacity: 1; color: var(--sud-accent); border-color: var(--sud-accent); }
 
 .sud-em-panel {
   display: none; position: fixed; z-index: 1500;          /* место и высоту ставит sud-embeddings.js */
@@ -661,3 +661,48 @@ body.sud-drag-active, body.sud-drag-active * { user-select: none !important; cur
 .sud-cmp-str output { grid-column: 2; grid-row: 2; text-align: right; color: var(--body-text-color); }
 .sud-cmp-hint { font-size: 11.5px; color: var(--body-text-color-subdued); line-height: 1.45; }
 @media (max-width: 720px) { .sud-cmp-body { grid-template-columns: 1fr; } .sud-cmp-side { border-left: 0; border-top: 1px solid var(--sud-line); max-height: 40%; } }
+
+/* ================= 🦴 редактор позы (javascript/sud-pose.js) ================= */
+.sud-pose {
+  display: none; position: fixed; inset: 2.5vh 2.5vw; z-index: 1500; flex-direction: column;
+  background: var(--background-fill-primary); border: 1px solid var(--sud-line); border-radius: 14px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45); color: var(--body-text-color); font-size: 13px; overflow: hidden;
+}
+.sud-pose.show { display: flex; }
+.sud-pose, .sud-pose button, .sud-pose input { font-family: var(--font, "Source Sans Pro"), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+.sud-pose .sud-ico { width: 16px; height: 16px; }
+.sud-pose-bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--sud-line); flex-wrap: wrap; flex: none; }
+.sud-pose-dim { color: var(--body-text-color-subdued); font-size: 12px; }
+.sud-pose-sp { flex: 1; }
+.sud-pose-pill { padding: 4px 11px; border-radius: 999px; border: 1px solid var(--sud-line); background: transparent; color: var(--body-text-color); font-size: 12.5px; cursor: pointer; white-space: nowrap; }
+.sud-pose-pill:hover { border-color: var(--sud-accent); color: var(--sud-accent); }
+.sud-pose-pill.acc { background: var(--sud-accent); border-color: var(--sud-accent); color: #fbf1c7; }
+.sud-pose-pill.acc:hover { filter: brightness(1.1); color: #fbf1c7; }
+.sud-pose-ic { width: 28px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--sud-line); border-radius: 7px; background: transparent; color: var(--body-text-color); cursor: pointer; }
+.sud-pose-ic[disabled] { opacity: 0.35; cursor: default; }
+.sud-pose-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 240px; }
+.sud-pose-stage { position: relative; display: flex; align-items: center; justify-content: center; background: var(--background-fill-secondary); min-height: 0; }
+.sud-pose-box { position: relative; background: #000; border-radius: 6px; overflow: hidden; }
+.sud-pose-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+.sud-pose-svg { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: default; }
+.sud-pose-j { cursor: grab; }
+.sud-pose-svg line[data-person] { cursor: move; }
+.sud-pose-busy { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.55); color: #fbf1c7; font-size: 14px; text-align: center; padding: 20px; }
+.sud-pose-tip { position: absolute; left: 12px; bottom: 10px; right: 12px; text-align: center; font-size: 12px; color: var(--body-text-color-subdued); pointer-events: none; }
+.sud-pose-side { border-left: 1px solid var(--sud-line); padding: 12px; overflow: auto; display: flex; flex-direction: column; gap: 14px; }
+.sud-pose-sec { font-size: 11.5px; color: var(--body-text-color-subdued); margin-bottom: 6px; }
+.sud-pose-it { display: flex; align-items: center; gap: 7px; padding: 4px 6px; border-radius: 7px; cursor: pointer; }
+.sud-pose-it:hover { background: var(--sud-field); }
+.sud-pose-it.on { background: var(--sud-field); color: var(--sud-accent); }
+.sud-pose-it span { flex: 1; }
+.sud-pose-mini { border: 0; background: transparent; color: var(--body-text-color-subdued); cursor: pointer; padding: 2px; display: inline-flex; }
+.sud-pose-mini .sud-ico { width: 14px; height: 14px; }
+.sud-pose-mini:hover { color: var(--body-text-color); }
+.sud-pose-tg { display: flex; align-items: center; gap: 8px; padding: 3px 0; cursor: pointer; }
+.sud-pose-tg input { accent-color: var(--sud-accent); width: 15px; height: 15px; }
+.sud-pose-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+.sud-pose-sl { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--body-text-color-subdued); }
+.sud-pose-sl input { flex: 1; accent-color: var(--sud-accent); }
+.sud-pose-hint { font-size: 11.5px; color: var(--body-text-color-subdued); line-height: 1.45; }
+.sud-pose-toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 1600; background: var(--sud-accent); color: #fbf1c7; padding: 9px 16px; border-radius: 10px; font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+@media (max-width: 760px) { .sud-pose-body { grid-template-columns: 1fr; grid-template-rows: 1fr auto; } .sud-pose-side { border-left: 0; border-top: 1px solid var(--sud-line); max-height: 38vh; } }
