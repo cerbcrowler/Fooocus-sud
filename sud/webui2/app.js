@@ -16,6 +16,7 @@
         sun: '<path d="M12 12m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0"/><path d="M3 12h1m8 -9v1m8 8h1m-9 8v1m-6.4 -15.4l.7 .7m12.1 -.7l-.7 .7m0 11.4l.7 .7m-12.1 -.7l-.7 .7"/>',
         moon: '<path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z"/>',
         chev: '<path d="M6 9l6 6l6 -6"/>',
+        scenes: '<path d="M15 8h.01"/><path d="M3 6a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v12a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3v-12z"/><path d="M3 16l5 -5c.928 -.893 2.072 -.893 3 0l5 5"/><path d="M14 14l1 -1c.928 -.893 2.072 -.893 3 0l3 3"/>',
         models: '<path d="M12 3l8 4.5l0 9l-8 4.5l-8 -4.5l0 -9l8 -4.5"/><path d="M12 12l8 -4.5"/><path d="M12 12l0 9"/><path d="M12 12l-8 -4.5"/>',
         poses: '<path d="M11 4a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M7 21l3 -4"/><path d="M16 21l-2 -4l-3 -3l1 -6"/><path d="M6 12l2 -3l4 -1l3 3l3 1"/>',
         settings: '<path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z"/><path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/>',
@@ -28,7 +29,7 @@
         prompt: '', negative: '', showNeg: false, model: null, loras: null, sampler: null, scheduler: null,
         steps: -1, cfg: 1, sharpness: 2, aspect: null, image_number: 1, output_format: 'png', performance: null,
         random: true, seed: '', closed: {}, camera: { enabled: false, angle: '', height: '', shot: '', weight: 1.2 },
-        ip: [], ipOff: false, ipOpen: false,
+        ip: [], ipOff: false, ipOpen: false, scene: { loc: '', light: '' },
         inp: { mode: 'replace', prompt: '', strength: 1, field: 0.618, size: 60 },
     }, lsGet(LS, {}));
     let history = lsGet(LS_HIST, []);                 // [{key, url, seed, prompt}]
@@ -337,7 +338,7 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
 
     async function generate(extra) {
         if (running) return;
-        if (U.autoTr && !(extra && extra.action) && CYR.test($('#prompt').value + $('#negative').value)) {
+        if (U.autoTr && !(extra && (extra.action || extra.preview)) && CYR.test($('#prompt').value + $('#negative').value)) {
             $('#btn-gen').disabled = true; setProgress(0, 'Перевожу промпт…');
             try { await translateFields(); }
             catch (e) { $('#btn-gen').disabled = false; setProgress(0, ''); alert('Перевод не удался, ничего не запускаю: ' + e.message); return; }
@@ -349,11 +350,13 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
             aspect: U.aspect, image_number: +U.image_number, output_format: U.output_format, performance: U.performance,
             seed: U.random ? null : U.seed, camera: U.camera,
             ip: ipActive() ? U.ip.filter((s) => s && s.key) : [],
+            scene: { loc: U.scene.loc || null, light: U.scene.light || null },
         }, extra || {});
         $('#btn-gen').disabled = true;
         try {
             const r = await api('generate', payload);
-            running = { id: r.id, seed: r.seed, prompt: payload.prompt, action: extra && extra.action && extra.action.type };
+            running = { id: r.id, seed: r.seed, prompt: payload.prompt, action: extra && extra.action && extra.action.type,
+                        preview: !!(extra && extra.preview), onDone: extra && extra.onDone };
             if (!U.random && !(extra && extra.action)) { U.seed = String(r.seed); save(); }
             $('#btn-stop').hidden = false;
             setProgress(0, 'В очереди…');
@@ -369,7 +372,8 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
             if (r.done) {
                 let items = r.images.map((k, i) => ({ key: k, url: API + 'image/' + k, name: (r.names || [])[i], seed: r.seed, prompt: running.prompt, action: running.action }));
                 if (running.action === 'faces') items = items.slice(-1);   // Enhance отдаёт ещё и исходник — он у нас уже есть
-                saveToLaptop(items);
+                if (!running.preview) saveToLaptop(items);   // превью сцены — только в ленту
+                if (running.onDone) { try { running.onDone(items); } catch (e) { console.error(e); } }
                 if (SRV && SRV.notify_sound !== false) chime();
                 history = items.concat(history).slice(0, 60);
                 lsSet(LS_HIST, history);
@@ -902,6 +906,175 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
         if ((e.ctrlKey || e.metaKey) && (k === 'z' || k === 'я')) { e.preventDefault(); $('[data-pose="undo"]').click(); }
         else if ((e.ctrlKey || e.metaKey) && (k === 'y' || k === 'н')) { e.preventDefault(); $('[data-pose="redo"]').click(); }
         else if (e.key === 'Escape') poseClose();
+    });
+
+    // ---------- 🏞 сцены: свои «стили» — локации и свет (settings/scenes.json на Drive), ✨ придумать через OpenRouter ----------
+    const SC = { list: null, llm: null, models: null, kind: 'loc', q: '', ed: null, sure: '', busy: '', err: '', instr: false };
+    const KN = { loc: 'Локации', light: 'Свет' };
+    async function scLoad(force) {
+        if (SC.list && !force) return SC.list;
+        try { const r = await api('scenes'); SC.list = r.scenes; SC.llm = r.llm; } catch (e) { SC.list = SC.list || []; SC.err = e.message; }
+        renderChips();
+        return SC.list;
+    }
+    const scFind = (n, kind) => (SC.list || []).find((s) => s.name === n && (!kind || s.kind === kind));
+    const scPrev = (s) => (s.preview ? `<img src="${API}scenes/preview/${s.preview}" alt="" loading="lazy">` : `<span class="sc-ph">${s.kind === 'light' ? '💡' : '🏞'}</span>`);
+    function renderChips() {
+        const l = U.scene.loc, g = U.scene.light;
+        const cl = $('#chip-loc'), cg = $('#chip-light');
+        if (!cl) return;
+        cl.textContent = '🏞 ' + (l || 'локация'); cl.classList.toggle('on', !!l);
+        cg.textContent = '💡 ' + (g || 'свет'); cg.classList.toggle('on', !!g);
+    }
+    function renderScenes() {
+        const box = $('#scn');
+        if (!SC.list) { box.innerHTML = '<div class="hint">Загружаю сцены…</div>'; return; }
+        const words = SC.q.toLowerCase().split(/\s+/).filter(Boolean);
+        const list = SC.list.filter((s) => s.kind === SC.kind && words.every((w) => (s.name + ' ' + (s.note || '') + ' ' + (s.prompt || '') + ' ' + (s.light || '')).toLowerCase().includes(w)));
+        const sel = U.scene[SC.kind];
+        const cards = list.map((s) => `<div class="sc-card${s.name === sel ? ' on' : ''}">
+              <button class="sc-th" data-sc-pick="${esc(s.name)}" title="${s.name === sel ? 'Выбрана для генерации — клик, чтобы снять' : 'Выбрать для генерации'}">${scPrev(s)}${s.name === sel ? '<span class="sc-sel">✓ выбрана</span>' : ''}</button>
+              <div class="sc-n" title="${esc((s.prompt ? s.prompt + '\n' : '') + (s.light || ''))}">${esc(s.name)}<small>${esc(s.note || '')}</small></div>
+              <div class="pb-b"><button class="btn-s" data-sc-edit="${esc(s.name)}">✎ править</button><button class="btn-s" data-sc-dup="${esc(s.name)}" title="Копия">⧉</button>
+                <button class="btn-s danger${SC.sure === s.name ? ' sure' : ''}" data-sc-del="${esc(s.name)}" title="Удалить">${SC.sure === s.name ? 'точно?' : '🗑'}</button></div></div>`).join('');
+        const cnt = (k) => SC.list.filter((s) => s.kind === k).length;
+        box.innerHTML = `<div class="pb-top"><b>🏞 Сцены</b>
+              <span class="seg">${Object.entries(KN).map(([k, t]) => `<button class="${SC.kind === k ? 'on' : ''}" data-sc-kind="${k}">${t} · ${cnt(k)}</button>`).join('')}</span>
+              <input type="text" class="pb-q sc-q" placeholder="Поиск" value="${esc(SC.q)}"><span class="sp"></span>
+              <button class="btn-s" data-sc-new="manual">＋ вручную</button><button class="btn-s acc" data-sc-new="ai">✨ придумать</button></div>
+            <div class="hint pb-hint">Клик по картинке — выбрать для генерации (у промпта появится чип). ${SC.kind === 'loc' ? 'Свет локации действует, пока в «Свет» ничего не выбрано.' : 'Свет заменяет свет выбранной локации.'}</div>
+            ${SC.ed ? scEditor() : ''}
+            <div class="pb-grid">${cards || `<div class="hint">${SC.list.length ? 'Ничего не нашлось' : 'Пока пусто — придумай первую ✨'}</div>`}</div>`;
+    }
+    function scEditor() {
+        const E = SC.ed, L = SC.llm || {}, isL = E.kind === 'loc';
+        const models = SC.models ? SC.models.map((m) => `<option value="${esc(m.id)}"${m.id === L.model ? ' selected' : ''}>${m.free ? '🆓 ' : ''}${esc(m.id)}</option>`).join('')
+            : `<option>${esc(L.model || '')}</option>`;
+        const prev = E.previewKey ? `<img src="${API}image/${E.previewKey}" alt="">` : E.preview ? `<img src="${API}scenes/preview/${E.preview}" alt="">` : `<span class="sc-ph">${isL ? '🏞' : '💡'}</span>`;
+        const f = (k, label, ph, rows) => `<label class="sc-f"><span>${label}</span><textarea data-sc-f="${k}" rows="${rows || 2}" placeholder="${ph}">${esc(E[k] || '')}</textarea></label>`;
+        return `<div class="sc-ed">
+            <div class="ip-top"><b>${E.old ? '✎ ' + esc(E.old) : (isL ? 'Новая локация' : 'Новый свет')}</b><span class="sp"></span><button class="x" data-sc="close" title="Закрыть">✕</button></div>
+            <div class="sc-ai">
+              <input type="text" data-sc-f="idea" placeholder="${isL ? 'Идея по-русски: уютная кухня в деревне, раннее утро, туман за окном' : 'Идея по-русски: золотой час, тёплое солнце сбоку, длинные тени'}" value="${esc(E.idea || '')}">
+              <button class="btn-s acc" data-sc="gen"${SC.busy ? ' disabled' : ''}>${SC.busy === 'gen' ? '⏳ думаю…' : '✨ сгенерировать'}</button>
+              <select data-sc-model title="Модель OpenRouter (🆓 — бесплатные)">${models}</select>
+              <button class="btn-s${SC.instr ? ' on' : ''}" data-sc="instr" title="Инструкция, по которой нейронка пишет ${isL ? 'локации' : 'свет'}">инструкция ✎</button></div>
+            ${L.has_key === false ? '<div class="pe-err">Нет ключа OpenRouter на Colab — секрет OPENROUTER_API_KEY подхватится после перезапуска ячейки Colab. Вручную заполнять можно.</div>' : ''}
+            ${SC.instr ? `<div class="sc-instr"><textarea data-sc-instr rows="8">${esc((L.instr || {})[E.kind] || '')}</textarea>
+                <div class="sbtns"><button class="btn-s acc" data-sc="instr-save">сохранить инструкцию</button><button class="btn-s" data-sc="instr-reset" title="Вернуть стандартную">по умолчанию</button><span class="dim">ответ — JSON с полями name, ${isL ? 'prompt, ' : ''}light, negative, note</span></div></div>` : ''}
+            ${SC.err ? `<div class="pe-err">${esc(SC.err)}</div>` : ''}
+            <div class="sc-grid"><div class="sc-fields">
+              <label class="sc-f"><span>Название</span><input type="text" data-sc-f="name" value="${esc(E.name || '')}" placeholder="коротко, по-русски"></label>
+              ${isL ? f('prompt', 'Обстановка', 'rustic farmhouse kitchen, worn wooden table, linen curtains…', 3) : ''}
+              ${f('light', isL ? 'Свет и тени' : 'Свет, тени, настроение', 'soft diffused morning light, gentle shadows…', isL ? 2 : 3)}
+              ${f('negative', 'Негатив', 'необязательно', 1)}
+              <label class="sc-f"><span>Заметка</span><input type="text" data-sc-f="note" value="${esc(E.note || '')}" placeholder="для чего хороша"></label></div>
+              <div class="sc-pv"><div class="sc-pvi">${prev}</div>
+                <button class="btn-s" data-sc="preview"${SC.busy || running ? ' disabled' : ''} title="Один кадр на твоей текущей модели, LoRA и сэмплере — ~10 с">${SC.busy === 'preview' ? '⏳ рисую…' : '🎨 нарисовать на моей модели'}</button></div></div>
+            <div class="inp-go"><span class="sp"></span><button class="btn-s" data-sc="close">отмена</button><button class="gen small" data-sc="save">★ сохранить</button></div></div>`;
+    }
+    function scOpen(s, ai) {
+        SC.ed = s ? Object.assign({ old: s.name, idea: '' }, s) : { kind: SC.kind, name: '', prompt: '', light: '', negative: '', note: '', idea: '', ai };
+        SC.err = ''; SC.instr = false; renderScenes();
+        const el = $(ai || !s ? '[data-sc-f="idea"]' : '[data-sc-f="name"]'); if (el) el.focus();
+        $('#scn .sc-ed').scrollIntoView({ block: 'nearest' });
+        if (!SC.models) api('llm/models').then((r) => { SC.models = r.models; SC.llm = Object.assign(SC.llm || {}, { model: r.model, has_key: r.has_key }); if (SC.ed) renderScenes(); }).catch(() => {});
+    }
+    async function scGen() {
+        const E = SC.ed; if (!E || SC.busy) return;
+        if (!E.idea || !E.idea.trim()) { SC.err = 'Напиши идею — пару слов'; renderScenes(); return; }
+        SC.busy = 'gen'; SC.err = ''; renderScenes();
+        try {
+            const r = await api('llm/scene', { kind: E.kind, idea: E.idea, model: (SC.llm || {}).model });
+            Object.assign(E, { name: r.name || E.name, prompt: E.kind === 'loc' ? r.prompt : '', light: r.light, negative: r.negative, note: r.note });
+            SC.err = ''; flash(`Готово за ${r.seconds} с`);
+        } catch (e) { SC.err = '⚠️ ' + e.message; }
+        SC.busy = ''; renderScenes();
+    }
+    function scPreview() {
+        const E = SC.ed; if (!E || SC.busy || running) return;
+        if (E.kind === 'loc' && !E.prompt) { SC.err = 'Сначала заполни «Обстановку»'; renderScenes(); return; }
+        if (!E.light && E.kind === 'light') { SC.err = 'Сначала опиши свет'; renderScenes(); return; }
+        SC.busy = 'preview'; SC.err = ''; renderScenes();
+        const draft = { name: E.name, prompt: E.prompt, light: E.light, negative: E.negative };
+        generate({ preview: true, image_number: 1, seed: null,
+            prompt: E.kind === 'loc' ? 'photo of a woman standing in the room, full body, wide shot' : 'portrait photo of a woman, upper body, looking at camera',
+            scene: E.kind === 'loc' ? { loc: draft, light: null } : { loc: null, light: draft },
+            onDone: (items) => { if (SC.ed === E && items[0]) E.previewKey = items[0].key; SC.busy = ''; if (!$('#v-scenes').hidden) renderScenes(); } });
+        const t0 = Date.now(); const chk = setInterval(() => { if (!running || Date.now() - t0 > 300000) { clearInterval(chk); if (SC.busy === 'preview') { SC.busy = ''; renderScenes(); } } }, 1000);
+    }
+    async function scSave() {
+        const E = SC.ed; if (!E) return;
+        const name = (E.name || '').split(/\s+/).filter(Boolean).join(' ');
+        if (!name) { SC.err = 'Впиши название'; renderScenes(); return; }
+        try {
+            const r = await api('scenes', { op: 'save', name, old: E.old || '', kind: E.kind, prompt: E.prompt, light: E.light, negative: E.negative, note: E.note, preview_key: E.previewKey || null });
+            SC.list = r.scenes;
+            if (E.old && U.scene[E.kind] === E.old) { U.scene[E.kind] = name; save(); }
+            SC.ed = null; flash('Сцена сохранена'); renderScenes(); renderChips();
+        } catch (e) { SC.err = '⚠️ ' + e.message; renderScenes(); }
+    }
+    function scPick(kind, name) { U.scene[kind] = U.scene[kind] === name ? '' : name; save(); renderChips(); }
+    document.addEventListener('click', async (e) => {
+        const t = e.target.closest && e.target.closest('#scn button');
+        if (!t) return;
+        const d = t.dataset;
+        if (d.scKind) { SC.kind = d.scKind; if (SC.ed && !SC.ed.old && !SC.ed.name) SC.ed.kind = d.scKind; renderScenes(); }
+        else if (d.scNew) scOpen(null, d.scNew === 'ai');
+        else if (d.scEdit) scOpen(scFind(d.scEdit, SC.kind));
+        else if (d.scPick) { scPick(SC.kind, d.scPick); renderScenes(); }
+        else if (d.scDup) {
+            const s = scFind(d.scDup, SC.kind); let n = s.name + ' копия', k = 2; while (scFind(n)) n = `${s.name} копия ${k++}`;
+            try { SC.list = (await api('scenes', Object.assign({}, s, { op: 'save', name: n, old: '' }))).scenes; renderScenes(); } catch (er) { alert(er.message); }
+        } else if (d.scDel) {
+            if (SC.sure !== d.scDel) { SC.sure = d.scDel; renderScenes(); setTimeout(() => { if (SC.sure === d.scDel) { SC.sure = ''; renderScenes(); } }, 4000); return; }
+            SC.sure = '';
+            try { SC.list = (await api('scenes', { op: 'delete', name: d.scDel })).scenes; if (U.scene[SC.kind] === d.scDel) { U.scene[SC.kind] = ''; save(); } renderScenes(); renderChips(); } catch (er) { alert(er.message); }
+        } else if (d.sc === 'close') { SC.ed = null; renderScenes(); }
+        else if (d.sc === 'gen') scGen();
+        else if (d.sc === 'preview') scPreview();
+        else if (d.sc === 'save') scSave();
+        else if (d.sc === 'instr') { SC.instr = !SC.instr; renderScenes(); }
+        else if (d.sc === 'instr-save' || d.sc === 'instr-reset') {
+            const k = SC.ed.kind, v = d.sc === 'instr-reset' ? '' : $('[data-sc-instr]').value;
+            try { await api('settings', { values: { [`sud_instr_${k}`]: v } }); const r = await api('scenes'); SC.llm = r.llm; flash(v ? 'Инструкция сохранена' : 'Стандартная инструкция'); renderScenes(); }
+            catch (er) { SC.err = '⚠️ ' + er.message; renderScenes(); }
+        }
+    });
+    document.addEventListener('input', (e) => {
+        const t = e.target;
+        if (t.dataset && t.dataset.scF && SC.ed) SC.ed[t.dataset.scF] = t.value;
+        if (t.classList && t.classList.contains('sc-q')) { SC.q = t.value; const pos = t.selectionStart; renderScenes(); const q = $('.sc-q'); q.focus(); q.setSelectionRange(pos, pos); }
+    });
+    document.addEventListener('change', async (e) => {
+        if (e.target.dataset && e.target.dataset.scModel !== undefined) {
+            const m = e.target.value; SC.llm = Object.assign(SC.llm || {}, { model: m });
+            try { await api('settings', { values: { sud_llm_model: m } }); flash('Модель: ' + m.split('/').pop()); } catch (er) { /* */ }
+        }
+    });
+    document.addEventListener('keydown', (e) => { if (e.target.dataset && e.target.dataset.scF === 'idea' && e.key === 'Enter') { e.preventDefault(); scGen(); } });
+    // чипы у промпта: выбрать сцену из библиотеки
+    async function spOpen(kind, btn) {
+        await scLoad();
+        let el = $('#spick');
+        if (!el) { el = document.createElement('div'); el.id = 'spick'; el.className = 'lpick'; document.body.appendChild(el); }
+        const items = SC.list.filter((s) => s.kind === kind);
+        el.innerHTML = `<div class="lp-h">${kind === 'loc' ? '🏞 Локация' : '💡 Свет'}</div><div class="lp-list sp-list">${items.map((s) => `<button class="lp-it sp-it${U.scene[kind] === s.name ? ' cur' : ''}" data-sp-k="${kind}" data-sp-n="${esc(s.name)}">${scPrev(s)}<span>${esc(s.name)}<small>${esc(s.note || '')}</small></span></button>`).join('') || '<div class="hint" style="padding:8px">Пока пусто</div>'}</div>
+            ${U.scene[kind] ? `<button class="lp-it lp-none" data-sp-k="${kind}" data-sp-n="">✕ без ${kind === 'loc' ? 'локации' : 'света'}</button>` : ''}
+            <button class="lp-it" data-sp-lib="${kind}">➜ библиотека сцен…</button>`;
+        el.hidden = false;
+        const r = btn.getBoundingClientRect(), w = 300, h = Math.min(420, window.innerHeight - 20);
+        el.style.width = w + 'px'; el.style.maxHeight = h + 'px';
+        el.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
+        el.style.top = Math.max(8, r.top - Math.min(h, el.scrollHeight) - 6) + 'px';
+    }
+    document.addEventListener('click', (e) => {
+        const t = e.target.closest && e.target.closest('#chip-loc, #chip-light, #spick button');
+        const el = $('#spick');
+        if (!t) { if (el && !el.hidden && !(e.target.closest && e.target.closest('#spick'))) el.hidden = true; return; }
+        if (t.id === 'chip-loc' || t.id === 'chip-light') { if (el && !el.hidden) { el.hidden = true; return; } spOpen(t.id === 'chip-loc' ? 'loc' : 'light', t); return; }
+        if (t.dataset.spLib) { el.hidden = true; SC.kind = t.dataset.spLib; switchView('scenes'); return; }
+        if (t.dataset.spK) { U.scene[t.dataset.spK] = t.dataset.spN; save(); renderChips(); el.hidden = true; }
     });
 
     // ---------- 📦 менеджер моделей: чекпоинты и LoRA (каталог links.txt на Drive, общий с классическим) ----------
@@ -1719,10 +1892,11 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
     function switchView(v) {
         document.querySelectorAll('.nv[data-view]').forEach((b) => b.classList.toggle('on', b.dataset.view === v));
         $('#v-create').hidden = v !== 'create'; $('#v-gallery').hidden = v !== 'gallery'; $('#v-settings').hidden = v !== 'settings';
-        $('#v-poses').hidden = v !== 'poses'; $('#v-models').hidden = v !== 'models';
+        $('#v-poses').hidden = v !== 'poses'; $('#v-models').hidden = v !== 'models'; $('#v-scenes').hidden = v !== 'scenes';
+        if (v === 'scenes') scLoad().then(renderScenes);
         if (v === 'models') mmLoad();
         if (v === 'poses') renderBank();
-        document.querySelector('.main').classList.toggle('wide', ['settings', 'poses', 'models'].includes(v));   // справа карточки не нужны
+        document.querySelector('.main').classList.toggle('wide', ['settings', 'poses', 'models', 'scenes'].includes(v));   // справа карточки не нужны
         if (v === 'settings') settOpen();
     }
 
@@ -1764,7 +1938,9 @@ OK — выбрать другую папку, Отмена — ${SAVE.enabled ?
             U.loras = p ? p.loras.map((l) => [l.enabled !== false, l.name, l.weight]) : D.loras;
             if (U.steps === -1 && D.steps) Object.assign(U, { steps: D.steps, cfg: D.cfg, sharpness: D.sharpness });
         }
-        if (U.autoTr === undefined) U.autoTr = !!SRV.auto_translate;   // по умолчанию — как в ⚙️ Настройках классического
+        if (U.autoTr === undefined) U.autoTr = !!SRV.auto_translate;
+        if (!U.scene) U.scene = { loc: '', light: '' };
+        renderChips(); scLoad();   // по умолчанию — как в ⚙️ Настройках классического
         save(); renderRight(); renderIp(); renderTr();
         setInterval(refreshState, 15000);
     }

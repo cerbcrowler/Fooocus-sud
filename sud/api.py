@@ -13,6 +13,10 @@
     POST /sud/api/upload          картинка (тело запроса) или {"from": key} → {"key"} для «Образцов» (Image Prompt)
     GET  /sud/api/models?kind=    📦 менеджер моделей: каталог links.txt + файлы в Colab + загрузки (sud/ui_manager.py)
     POST /sud/api/models          {op, kind, url?, file?, ...} — download|cancel|delete|autoload|category|title|note|remove|add|add_category
+    GET  /sud/api/scenes          🏞 сцены (локации и свет) — settings/scenes.json, превью — settings/scene_previews/
+    POST /sud/api/scenes          {op: save|delete|reorder, ...}
+    POST /sud/api/llm/scene       {kind: loc|light, idea, model?} → поля карточки (OpenRouter, sud/llm.py)
+    GET  /sud/api/llm/models      модели OpenRouter (бесплатные — первыми) + выбранная + есть ли ключ
     GET  /sud/api/posebank        банк поз (Drive: settings/pose_bank.json, фото — settings/pose_photos/)
     POST /sud/api/posebank        {op: save|delete|reorder, name, new?, note?, people, w, h, photo?}
     POST /sud/api/pose            {op: detect, key} → позы с фото (DWPose); {op: render, poses, w, h} → {key} скелета
@@ -32,6 +36,7 @@ import io
 import json
 import os
 import random
+import re
 import threading
 import time
 import uuid
@@ -67,8 +72,9 @@ def _build_args(p):
         if c is not None and value is not None:
             values[id(c)] = value
 
-    put("prompt", p.get("prompt", ""))
-    put("negative_prompt", p.get("negative", ""))
+    prompt, negative = _apply_scene(p.get("prompt", ""), p.get("negative", ""), p.get("scene"))
+    put("prompt", prompt)
+    put("negative_prompt", negative)
     put("performance", p.get("performance"))
     put("aspect", p.get("aspect"))
     put("image_number", int(p.get("image_number", 1)))
@@ -208,6 +214,87 @@ def _models(cmd):
             print(f"[sud api] update_files: {e}")
     st["select"] = fx["select"]
     return st
+
+
+# ---------------- 🏞 сцены ----------------
+def _scene_obj(v, kind):
+    """Имя сцены из библиотеки или сама сцена (черновик для превью) → dict | None."""
+    if isinstance(v, dict):
+        return v
+    if not v:
+        return None
+    from sud import presets as P
+    s = P.SCENES.get(str(v))
+    return s if s and s.get("kind") == kind else None
+
+
+def _apply_scene(prompt, negative, scene):
+    """Локация и свет дописываются в конец промпта (как камера), их негатив — к негативу."""
+    if not isinstance(scene, dict):
+        return prompt, negative
+    loc, light = _scene_obj(scene.get("loc"), "loc"), _scene_obj(scene.get("light"), "light")
+    parts = [prompt.strip().rstrip(",")] if prompt.strip() else []
+    if loc and loc.get("prompt"):
+        parts.append(loc["prompt"].strip().rstrip(","))
+    lt = (light or {}).get("light") or (loc or {}).get("light")   # свой свет у локации — если «Свет» не выбран
+    if lt:
+        parts.append(lt.strip().rstrip(","))
+    negs = [negative.strip().rstrip(",")] if negative.strip() else []
+    for s in (loc, light):
+        if s and s.get("negative"):
+            negs.append(s["negative"].strip().rstrip(","))
+    if loc or light:
+        print(f"[Scene] {'локация «' + loc['name'] + '»' if loc and loc.get('name') else ''}"
+              f"{' · ' if loc and light else ''}{'свет «' + light['name'] + '»' if light and light.get('name') else ''}")
+    return ", ".join(parts), ", ".join(negs)
+
+
+def _scene_previews_dir():
+    from sud import presets as P
+    return os.path.join(os.path.dirname(P.SCENES.path()), "scene_previews")
+
+
+def _scenes(body):
+    import hashlib
+    from PIL import Image
+    from sud import presets as P
+    op, name = body.get("op"), " ".join(str(body.get("name") or "").split())
+    if op == "delete":
+        return P.SCENES.delete(name)
+    if op == "reorder":
+        return P.SCENES.reorder([str(n) for n in body.get("names") or []])
+    if op != "save":
+        return "неизвестная команда"
+    kind = body.get("kind") if body.get("kind") in ("loc", "light") else "loc"
+    clean = lambda k: " ".join(str(body.get(k) or "").split())  # noqa: E731
+    values = {"kind": kind, "prompt": clean("prompt") if kind == "loc" else "", "light": clean("light"),
+              "negative": clean("negative"), "note": clean("note")}
+    if kind == "loc" and not values["prompt"]:
+        return "опиши обстановку — поле «Обстановка» пустое"
+    if kind == "light" and not values["light"]:
+        return "опиши свет — поле «Свет и тени» пустое"
+    old = " ".join(str(body.get("old") or "").split())
+    prev = P.SCENES.get(old) if old else None
+    values["preview"] = (prev or {}).get("preview")
+    if body.get("preview_key"):   # картинка из ленты → маленькая копия на Drive
+        img = Image.fromarray(_load_image(body["preview_key"]))
+        img.thumbnail((448, 448))
+        fname = hashlib.sha1(f"{name}{time.time()}".encode()).hexdigest()[:16] + ".jpg"
+        os.makedirs(_scene_previews_dir(), exist_ok=True)
+        img.save(os.path.join(_scene_previews_dir(), fname), "JPEG", quality=85)
+        values["preview"] = fname
+    if prev is not None:
+        err = P.SCENES.rename(old, name) if old != name else ""
+        return err or P.SCENES.update(name, values)
+    return P.SCENES.add(name, values, values["note"])
+
+
+def _llm_settings():
+    from sud import llm, settings as S
+    cfg = S.effective()
+    return {"model": cfg.get("sud_llm_model") or llm.DEFAULT_MODEL,
+            "instr": {k: cfg.get(f"sud_instr_{k}") or v for k, v in llm.INSTR.items()},
+            "instr_default": llm.INSTR, "default_model": llm.DEFAULT_MODEL, "has_key": bool(llm.key())}
 
 
 def _pose_photos_dir():
@@ -459,6 +546,7 @@ SETTING_KEYS = {   # ключ: (тип, нужен ли перезапуск Foo
     "default_max_lora_number": (int, True), "default_loras_min_weight": (float, True),
     "default_loras_max_weight": (float, True), "default_max_image_number": (int, True),
     "default_prompt_negative": (str, False), "sud_prefetch_groups": (list, False),
+    "sud_llm_model": (str, False), "sud_instr_loc": (str, False), "sud_instr_light": (str, False),
 }
 
 
@@ -672,6 +760,57 @@ def _routes(app):
     async def models_post(request: Request):
         return JSONResponse(_models(await request.json()))
 
+    async def scenes_get():
+        from sud import presets as P
+        return JSONResponse({"scenes": P.SCENES.load(), "llm": _llm_settings()})
+
+    async def scenes_post(request: Request):
+        from sud import presets as P
+        try:
+            err = _scenes(await request.json())
+        except (TypeError, ValueError, KeyError, OSError) as e:
+            err = f"не получилось: {e}"
+        if err:
+            return JSONResponse({"error": err}, status_code=400)
+        return JSONResponse({"ok": True, "scenes": P.SCENES.load()})
+
+    async def scene_preview(name: str):
+        if not re.fullmatch(r"[0-9a-f]{16}\.jpg", name or ""):
+            return Response(status_code=404)
+        path = os.path.join(_scene_previews_dir(), name)
+        if not os.path.isfile(path):
+            return Response(status_code=404)
+        return FileResponse(path, headers={"Cache-Control": "max-age=604800"})
+
+    async def llm_scene(request: Request):
+        import asyncio
+        from sud import llm
+        body = await request.json()
+        kind = body.get("kind") if body.get("kind") in ("loc", "light") else "loc"
+        idea = str(body.get("idea") or "").strip()
+        if not idea:
+            return JSONResponse({"error": "напиши идею — пару слов, что за место или свет"}, status_code=400)
+        st = _llm_settings()
+        try:
+            out = await asyncio.get_running_loop().run_in_executor(
+                None, lambda: llm.scene(kind, idea, body.get("model") or st["model"], st["instr"][kind]))
+        except Exception as e:
+            print(f"[sud api] нейронка: {e}")
+            return JSONResponse({"error": str(e)}, status_code=502)
+        print(f"[sud api] ✨ {kind}: «{idea[:60]}» → «{out.get('name')}» ({out.get('model')}, {out.get('seconds')} с)")
+        return JSONResponse(out)
+
+    async def llm_models():
+        import asyncio
+        from sud import llm
+        try:
+            lst = await asyncio.get_running_loop().run_in_executor(None, llm.models)
+        except Exception as e:
+            lst, err = [], str(e)
+        else:
+            err = ""
+        return JSONResponse(dict(_llm_settings(), models=lst, error=err))
+
     async def posebank_get():
         from sud import presets as P
         return JSONResponse({"poses": P.POSES.load()})
@@ -832,6 +971,11 @@ def _routes(app):
     app.add_api_route("/sud/api/pose", pose, methods=["POST"])
     app.add_api_route("/sud/api/models", models_get, methods=["GET"])
     app.add_api_route("/sud/api/models", models_post, methods=["POST"])
+    app.add_api_route("/sud/api/scenes", scenes_get, methods=["GET"])
+    app.add_api_route("/sud/api/scenes", scenes_post, methods=["POST"])
+    app.add_api_route("/sud/api/scenes/preview/{name}", scene_preview, methods=["GET"])
+    app.add_api_route("/sud/api/llm/scene", llm_scene, methods=["POST"])
+    app.add_api_route("/sud/api/llm/models", llm_models, methods=["GET"])
     app.add_api_route("/sud/api/posebank", posebank_get, methods=["GET"])
     app.add_api_route("/sud/api/posebank", posebank_post, methods=["POST"])
     app.add_api_route("/sud/api/settings", settings_get, methods=["GET"])

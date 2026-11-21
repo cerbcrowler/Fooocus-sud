@@ -57,6 +57,8 @@ EMB = {"folder": "/content/drive/MyDrive/FOOOCUS-SUD/models/embeddings", "messag
                      ("old_sd15_emb", "OTHER", False, False, False), ("random_emb", "", False, False, None)]]}
 
 
+SCN = [{"name": "Лофт, кирпич", "kind": "loc", "prompt": "industrial loft, exposed brick wall, large steel windows", "light": "soft window light", "negative": "", "note": "индустриальный", "preview": None},
+       {"name": "Неон ночью", "kind": "light", "prompt": "", "light": "neon lights at night, magenta and cyan rim light", "negative": "daylight", "note": "киберпанк", "preview": None}]
 MMD = {"kind": "CHECKPOINTS", "categories": ["", "Реализм", "Illustrious"], "disk": {"used": 69e9, "total": 112e9}, "catalog": "/content/drive/MyDrive/FOOOCUS-SUD/links.txt", "message": "",
        "items": [
            {"url": "https://hf/a/NovaRealityILV91.safetensors", "file": "NovaRealityILV91.safetensors", "title": "NovaReality IL v9.1", "category": "Illustrious", "note": "мой основной", "autoload": True, "status": "local", "size": 6.9e9, "done": 0, "speed": 0, "error": "", "drive": False},
@@ -136,6 +138,10 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, SETT)
         if p == "/sud/api/posebank":
             return self._send(200, {"poses": BANK})
+        if p == "/sud/api/scenes":
+            return self._send(200, {"scenes": SCN, "llm": {"model": "deepseek/deepseek-v4.1-flash-1017", "has_key": True, "instr": {"loc": "You write LOCATION…", "light": "You write LIGHTING…"}}})
+        if p == "/sud/api/llm/models":
+            return self._send(200, {"model": "deepseek/deepseek-v4.1-flash-1017", "has_key": True, "models": [{"id": "deepseek/deepseek-v4.1-flash-1017", "free": True}, {"id": "openai/gpt-5-mini", "free": False}]})
         if p == "/sud/api/models":
             for x in MMD["items"]:
                 if x["status"] == "downloading":
@@ -179,6 +185,24 @@ class H(BaseHTTPRequestHandler):
                                                                                     [.45, .58], [.44, .75], [.44, .92], [.55, .58], [.56, .75], None, [.48, .19], [.52, .19], None, [.54, .2]],
                                                                            "left_hand": None, "right_hand": None, "face": None}]})
             return self._send(200, {"key": "u" + uuid.uuid4().hex[:16]})
+        if p == "/sud/api/scenes":
+            L, name, op = SCN, body.get("name"), body.get("op")
+            if op == "delete":
+                SCN[:] = [s for s in L if s["name"] != name]
+            elif op == "save":
+                old = body.get("old")
+                item = {k: body.get(k) for k in ("name", "kind", "prompt", "light", "negative", "note")}
+                item["preview"] = None
+                i = next((k for k, s in enumerate(L) if s["name"] == (old or None)), -1)
+                if i >= 0: L[i] = item
+                elif any(s["name"] == name for s in L): return self._send(400, {"error": f"Сцена «{name}» уже есть"})
+                else: L.append(item)
+            return self._send(200, {"ok": True, "scenes": SCN})
+        if p == "/sud/api/llm/scene":
+            time.sleep(1)
+            if body.get("kind") == "light":
+                return self._send(200, {"name": "Золотой час", "prompt": "", "light": "warm golden hour sunlight from the side, long soft shadows, amber tones", "negative": "", "note": "тёплые портреты", "model": "deepseek/deepseek-v4.1-flash-1017", "seconds": 1.2})
+            return self._send(200, {"name": "Деревенская кухня, туман", "prompt": "rustic farmhouse kitchen, worn wooden table, linen curtains, copper pots, foggy window", "light": "soft diffused morning light, gentle shadows", "negative": "modern appliances", "note": "уют, утро", "model": "deepseek/deepseek-v4.1-flash-1017", "seconds": 2.3})
         if p == "/sud/api/models":
             it = next((x for x in MMD["items"] if x["url"] and x["url"] == body.get("url")), None)
             op = body.get("op")

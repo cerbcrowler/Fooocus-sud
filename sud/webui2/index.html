@@ -30,6 +30,7 @@
     <nav class="nav">
       <button class="nv on" data-view="create" title="Создать"></button>
       <button class="nv" data-view="gallery" title="Галерея"></button>
+      <button class="nv" data-view="scenes" title="Сцены: локации и свет"></button>
       <button class="nv" data-view="models" title="Модели: чекпоинты и LoRA"></button>
       <button class="nv" data-view="poses" title="Банк поз"></button>
       <button class="nv" data-view="settings" title="Настройки"></button>
@@ -79,6 +80,8 @@
           <button class="chip" id="chip-em" title="Эмбеддинги: клик — в промпт, Shift+клик — туда, где курсор">🧬 эмбеддинги</button>
           <button class="chip" id="chip-ip" title="Образцы (Image Prompt): лицо, поза, контур, похожий стиль с фото">🖼 образцы</button>
           <button class="chip" id="chip-neg">− негатив</button>
+          <button class="chip" id="chip-loc" title="Локация из библиотеки 🏞 Сцены — допишется в конец промпта"></button>
+          <button class="chip" id="chip-light" title="Свет из библиотеки 🏞 Сцены — допишется в конец промпта"></button>
           <button class="chip" id="chip-cam" title="Карточка «Камера» справа"></button>
           <button class="chip" id="chip-strip" title="Показать / спрятать ленту истории — больше места под картинку"></button>
           <span class="sp"></span>
@@ -89,6 +92,9 @@
     </section>
     <section class="center" id="v-gallery" hidden>
       <div class="gallery" id="gallery"></div>
+    </section>
+    <section class="center" id="v-scenes" hidden>
+      <div class="scn" id="scn"></div>
     </section>
     <section class="center" id="v-models" hidden>
       <div class="mm" id="mm"></div>

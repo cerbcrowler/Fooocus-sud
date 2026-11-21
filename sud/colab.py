@@ -76,6 +76,18 @@ def models(drive_base=None):   # drive_base — устаревший парам�
     else:
         print("ℹ️ Секрета DEEPL_API_KEY нет — перевод промпта будет через Google")
 
+    # ключ OpenRouter для «✨ придумать» (сцены, позже — промпт); sud/llm.py читает его из файла
+    orkey = _secret("OPENROUTER_API_KEY")
+    if orkey:
+        from sud.llm import KEY_FILE as OR_KEY_FILE
+        os.makedirs(os.path.dirname(OR_KEY_FILE), exist_ok=True)
+        with open(OR_KEY_FILE, "w") as f:
+            f.write(orkey.strip())
+        os.chmod(OR_KEY_FILE, 0o600)
+        print("✅ Ключ OpenRouter для «✨ придумать»")
+    else:
+        print("ℹ️ Секрета OPENROUTER_API_KEY нет — «✨ придумать» работать не будет")
+
     importlib.reload(sud.models)
     print()
     return sud.models.sync(FOOOCUS_DIR, drive_base, hf_token=hf_token)
@@ -431,7 +443,7 @@ def _follow(port, wait_new=90, fmt=None):
         time.sleep(1)
 
 
-SECRETS = ("VPS_SSH_KEY", "HF_TOKEN", "DEEPL_API_KEY", "FOOOCUS_USER", "FOOOCUS_PASS")
+SECRETS = ("VPS_SSH_KEY", "HF_TOKEN", "DEEPL_API_KEY", "OPENROUTER_API_KEY", "FOOOCUS_USER", "FOOOCUS_PASS")
 
 
 def ask_early():
